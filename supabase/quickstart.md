@@ -65,7 +65,6 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 2. En Settings > Environment Variables añade:
    NEXT_PUBLIC_SUPABASE_URL
    NEXT_PUBLIC_SUPABASE_ANON_KEY
-   GOOGLE_API_KEY solo si quieres IA
 3. Despliega.
 
 ## 8. Verificación rápida en Supabase

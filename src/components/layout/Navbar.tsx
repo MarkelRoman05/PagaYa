@@ -2,34 +2,19 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Users, PlusCircle, History, LogOut, Wallet, CircleUser } from 'lucide-react';
+import { Home, Users, PlusCircle, History, Wallet, CircleUser } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePagaYa } from '@/hooks/use-pagaya';
-import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { useToast } from '@/hooks/use-toast';
 
 export function Navbar() {
   const pathname = usePathname();
-  const { user, signOut } = usePagaYa();
-  const { toast } = useToast();
+  const { user } = usePagaYa();
 
   const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
   const fullName = typeof userMetadata.full_name === 'string' ? userMetadata.full_name.trim() : '';
   const avatarUrl = typeof userMetadata.avatar_url === 'string' ? userMetadata.avatar_url.trim() : '';
   const displayName = fullName || user?.email?.split('@')[0] || 'U';
-
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-    } catch (error) {
-      toast({
-        title: 'No se pudo cerrar sesión',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
-        variant: 'destructive',
-      });
-    }
-  };
 
   const navItems = [
     { name: 'Inicio', href: '/dashboard', icon: Home },
@@ -80,14 +65,7 @@ export function Navbar() {
               <p className="text-sm font-medium leading-none">{displayName}</p>
               <p className="text-xs text-muted-foreground">{user?.email}</p>
             </div>
-            <Button type="button" variant="ghost" size="icon" onClick={handleSignOut} aria-label="Cerrar sesión">
-              <LogOut className="w-4 h-4" />
-            </Button>
         </div>
-
-          <Button type="button" variant="ghost" size="icon" onClick={handleSignOut} aria-label="Cerrar sesión" className="md:hidden">
-           <LogOut className="w-4 h-4" />
-          </Button>
       </div>
     </nav>
   );

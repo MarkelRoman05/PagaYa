@@ -5,17 +5,9 @@ import { Debt, Friend } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, MessageSquareText, Trash2, Clock, User } from 'lucide-react';
+import { CheckCircle2, Trash2, Clock, User } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
-import { aiPoweredReminderMessageAssistant } from '@/ai/flows/ai-powered-reminder-message-assistant-flow';
 import { useToast } from '@/hooks/use-toast';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,9 +28,6 @@ interface DebtCardProps {
 }
 
 export function DebtCard({ debt, friend, onPaid, onDelete }: DebtCardProps) {
-  const [isReminderOpen, setIsReminderOpen] = useState(false);
-  const [reminderMessage, setReminderMessage] = useState('');
-  const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -47,53 +36,6 @@ export function DebtCard({ debt, friend, onPaid, onDelete }: DebtCardProps) {
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  const fallbackReminderMessage = friend
-    ? `Hola ${friend.name}, te escribo por la deuda de ${formatCurrency(debt.amount)} por "${debt.description}". Cuando puedas, ¿me confirmas si puedes dejarla pagada esta semana? Gracias.`
-    : `Hola, te escribo por la deuda pendiente de ${formatCurrency(debt.amount)} por "${debt.description}". Cuando puedas, ¿me confirmas si puedes dejarla pagada esta semana? Gracias.`;
-
-  const handleGenerateReminder = async () => {
-    if (!friend) return;
-
-    setIsLoadingAi(true);
-
-    try {
-      const response = await aiPoweredReminderMessageAssistant({
-        friendName: friend.name,
-        debtAmount: formatCurrency(debt.amount),
-        debtDescription: debt.description,
-      });
-
-      setReminderMessage(response.suggestedMessage);
-    } catch (error) {
-      console.error("Error generating reminder:", error);
-
-      setReminderMessage(fallbackReminderMessage);
-      toast({
-        title: 'IA no disponible',
-        description: 'Se ha generado un recordatorio local para que puedas seguir usando la app.',
-      });
-    } finally {
-      setIsReminderOpen(true);
-      setIsLoadingAi(false);
-    }
-  };
-
-  const handleCopyReminder = async () => {
-    try {
-      await navigator.clipboard.writeText(reminderMessage);
-      toast({
-        title: 'Mensaje copiado',
-        description: 'Ya puedes pegarlo en WhatsApp, Telegram o email.',
-      });
-    } catch {
-      toast({
-        title: 'No se pudo copiar',
-        description: 'Copia el texto manualmente desde el cuadro de diálogo.',
-        variant: 'destructive',
-      });
-    }
-  };
 
   const handleMarkAsPaid = async () => {
     setIsUpdatingStatus(true);
@@ -191,18 +133,7 @@ export function DebtCard({ debt, friend, onPaid, onDelete }: DebtCardProps) {
                 {isUpdatingStatus ? 'Guardando...' : 'Pagado'}
               </Button>
               
-              {isOwedToMe && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="flex-1 text-primary border-primary/20 hover:bg-primary/5"
-                  onClick={handleGenerateReminder}
-                  disabled={isLoadingAi || isUpdatingStatus || isDeleting}
-                >
-                  <MessageSquareText className="w-4 h-4 mr-2" />
-                  {isLoadingAi ? "Cargando..." : "Recordar"}
-                </Button>
-              )}
+
 
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -238,33 +169,6 @@ export function DebtCard({ debt, friend, onPaid, onDelete }: DebtCardProps) {
           )}
         </CardContent>
       </Card>
-
-      <Dialog open={isReminderOpen} onOpenChange={setIsReminderOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <MessageSquareText className="text-primary" />
-              Sugerencia de la IA
-            </DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <div className="bg-muted p-4 rounded-lg text-sm italic leading-relaxed">
-              "{reminderMessage}"
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-3 text-center">
-              Puedes copiar este mensaje y enviarlo por WhatsApp o SMS a {friend?.name}.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={handleCopyReminder} className="w-full sm:w-auto">
-              Copiar
-            </Button>
-            <Button type="button" onClick={() => setIsReminderOpen(false)} className="w-full sm:w-auto">
-              Entendido
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

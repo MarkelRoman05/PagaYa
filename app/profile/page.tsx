@@ -9,11 +9,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { LogOut } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function ProfilePage() {
-  const { user, isReady, updateUserProfile, updatePassword } = usePagaYa();
+  const { user, isReady, signOut, updateUserProfile, updatePassword } = usePagaYa();
   const { toast } = useToast();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [fullName, setFullName] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(null);
@@ -152,6 +154,20 @@ export default function ProfilePage() {
     }
   };
 
+  const handleSignOut = async () => {
+    setIsLoggingOut(true);
+    try {
+      await signOut();
+    } catch (error) {
+      toast({
+        title: 'No se pudo cerrar sesión',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+      setIsLoggingOut(false);
+    }
+  };
+
   if (!isReady) {
     return null;
   }
@@ -267,6 +283,26 @@ export default function ProfilePage() {
                     {isSubmittingPassword ? 'Actualizando...' : 'Actualizar contraseña'}
                   </Button>
                 </form>
+              </CardContent>
+            </Card>
+
+            <Card className="lg:col-start-2 border-destructive/20 bg-destructive/5">
+              <CardHeader>
+                <CardTitle className="text-destructive">Cerrar sesión</CardTitle>
+                <CardDescription>
+                  Desconéctate de tu cuenta. Tendrás que volver a iniciar sesión para acceder.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  onClick={handleSignOut} 
+                  disabled={isLoggingOut}
+                  variant="destructive"
+                  className="w-full md:w-auto"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  {isLoggingOut ? 'Cerrando sesión...' : 'Cerrar sesión'}
+                </Button>
               </CardContent>
             </Card>
           </div>

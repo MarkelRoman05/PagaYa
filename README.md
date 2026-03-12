@@ -7,8 +7,6 @@ PagaYa es una app para gestionar pagos entre amigos: quién debe a quién, cuán
 - Registro y login por email y contraseña.
 - Persistencia real de amigos y deudas por usuario en Supabase.
 - Permite registrar deudas, marcarlas como pagadas y consultar el historial.
-- Incluye recordatorios generados con IA cuando está configurada.
-- Si la IA no está disponible, genera un mensaje local de respaldo para no romper la experiencia.
 
 ## Stack
 
@@ -16,7 +14,6 @@ PagaYa es una app para gestionar pagos entre amigos: quién debe a quién, cuán
 - React 19
 - Tailwind CSS
 - Supabase Auth + Postgres
-- Genkit para recordatorios opcionales con IA
 
 ## Configuración local
 
@@ -27,7 +24,6 @@ PagaYa es una app para gestionar pagos entre amigos: quién debe a quién, cuán
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
-GOOGLE_API_KEY=
 ```
 
 4. En Supabase Auth, habilita Email/Password en Authentication > Providers.
@@ -62,10 +58,7 @@ Pasos:
 2. Crea el proyecto de Supabase y ejecuta [supabase/schema.sql](supabase/schema.sql).
 3. Importa el proyecto en Vercel.
 4. Añade en Vercel las variables NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.
-5. Añade GOOGLE_API_KEY solo si quieres activar recordatorios con IA.
-6. Despliega.
-
-Sin configurar IA, la app seguirá funcionando gracias al recordatorio local de respaldo.
+5. Despliega.
 
 ## Qué falta para una versión comercial
 
