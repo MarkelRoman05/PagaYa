@@ -24,30 +24,46 @@ import {
 } from '@/components/ui/alert-dialog';
 
 export default function FriendsPage() {
-  const { friends, addFriend, removeFriend, isReady, isLoadingData } = usePagaYa();
+  const { friends, invitations, sendInvitation, acceptInvitation, rejectInvitation, removeFriend, isReady, isLoadingData, user } = usePagaYa();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdding, setIsAdding] = useState(false);
-  const [newFriend, setNewFriend] = useState({ name: '', email: '' });
+  const [newInvitation, setNewInvitation] = useState({ name: '', email: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingFriendId, setDeletingFriendId] = useState<string | null>(null);
+  const [acceptingInvitationId, setAcceptingInvitationId] = useState<string | null>(null);
+  const [rejectingInvitationId, setRejectingInvitationId] = useState<string | null>(null);
+  const [cancelingInvitationId, setCancelingInvitationId] = useState<string | null>(null);
 
   const filteredFriends = friends.filter(f => 
     f.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
     f.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const handleAddFriend = async (e: React.FormEvent) => {
+  // Get pending invitations received by current user (not sent by them)
+  const receivedInvitations = invitations.filter(inv => 
+    inv.status === 'pending' && 
+    inv.fromUserId !== user?.id && 
+    (inv.toUserId === user?.id || inv.toEmail === user?.email)
+  );
+
+  // Get pending invitations sent by current user
+  const sentInvitations = invitations.filter(inv => 
+    inv.status === 'pending' && 
+    inv.fromUserId === user?.id
+  );
+
+  const handleSendInvitation = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const name = newFriend.name.trim();
-    const email = newFriend.email.trim().toLowerCase();
+    const name = newInvitation.name.trim();
+    const email = newInvitation.email.trim().toLowerCase();
     const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
     if (!name || !email) {
       toast({
         title: 'Completa los campos',
-        description: 'Añade un nombre y un correo válido para guardar el contacto.',
+        description: 'Añade un nombre y un correo válido para enviar la invitación.',
         variant: 'destructive',
       });
       return;
@@ -64,8 +80,17 @@ export default function FriendsPage() {
 
     if (friends.some((friend) => friend.email.toLowerCase() === email)) {
       toast({
-        title: 'Contacto duplicado',
-        description: 'Ya existe un amigo registrado con ese email.',
+        title: 'Ya es amigo',
+        description: 'Ya existe una amistad con este email.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (invitations.some((inv) => inv.toEmail.toLowerCase() === email && inv.status === 'pending')) {
+      toast({
+        title: 'Invitación pendiente',
+        description: 'Ya has enviado una invitación a este email.',
         variant: 'destructive',
       });
       return;
@@ -74,27 +99,89 @@ export default function FriendsPage() {
     setIsSubmitting(true);
 
     try {
-      await addFriend({
+      await sendInvitation({
         name,
         email,
-        avatar: `https://picsum.photos/seed/${encodeURIComponent(name)}/150/150`
       });
 
-      setNewFriend({ name: '', email: '' });
+      setNewInvitation({ name: '', email: '' });
       setIsAdding(false);
 
       toast({
-        title: 'Amigo añadido',
-        description: `${name} ya está disponible para nuevas deudas.`,
+        title: 'Invitación enviada',
+        description: `Se ha enviado una invitación a ${email}.`,
       });
     } catch (error) {
       toast({
-        title: 'No se pudo guardar',
+        title: 'No se pudo enviar',
         description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
         variant: 'destructive',
       });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleAcceptInvitation = async (invitationId: string, inviterName: string) => {
+    setAcceptingInvitationId(invitationId);
+
+    try {
+      await acceptInvitation(invitationId);
+
+      toast({
+        title: 'Invitación aceptada',
+        description: `Ahora ${inviterName} es tu amigo.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'No se pudo aceptar',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setAcceptingInvitationId(null);
+    }
+  };
+
+  const handleRejectInvitation = async (invitationId: string) => {
+    setRejectingInvitationId(invitationId);
+
+    try {
+      await rejectInvitation(invitationId);
+
+      toast({
+        title: 'Invitación rechazada',
+        description: 'La invitación ha sido rechazada.',
+      });
+    } catch (error) {
+      toast({
+        title: 'No se pudo rechazar',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setRejectingInvitationId(null);
+    }
+  };
+
+  const handleCancelInvitation = async (invitationId: string) => {
+    setCancelingInvitationId(invitationId);
+
+    try {
+      await rejectInvitation(invitationId);
+
+      toast({
+        title: 'Invitación cancelada',
+        description: 'Has cancelado la invitación.',
+      });
+    } catch (error) {
+      toast({
+        title: 'No se pudo cancelar',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setCancelingInvitationId(null);
     }
   };
 
@@ -147,29 +234,29 @@ export default function FriendsPage() {
         {isAdding && (
           <Card className="mb-8 border-primary/20 bg-primary/5">
             <CardContent className="p-6">
-              <form onSubmit={handleAddFriend} className="grid md:grid-cols-3 gap-4 items-end">
+              <form onSubmit={handleSendInvitation} className="grid md:grid-cols-3 gap-4 items-end">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Nombre completo</Label>
+                  <Label htmlFor="name">Nombre del amigo</Label>
                   <Input 
                     id="name" 
                     placeholder="Ej: Juan Pérez" 
-                    value={newFriend.name}
-                    onChange={(e) => setNewFriend({ ...newFriend, name: e.target.value })}
+                    value={newInvitation.name}
+                    onChange={(e) => setNewInvitation({ ...newInvitation, name: e.target.value })}
                     className="bg-white"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">Email del amigo</Label>
                   <Input 
                     id="email" 
                     type="email" 
                     placeholder="juan@ejemplo.com" 
-                    value={newFriend.email}
-                    onChange={(e) => setNewFriend({ ...newFriend, email: e.target.value })}
+                    value={newInvitation.email}
+                    onChange={(e) => setNewInvitation({ ...newInvitation, email: e.target.value })}
                     className="bg-white"
                   />
                 </div>
-                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : 'Guardar amigo'}</Button>
+                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Enviando...' : 'Enviar invitación'}</Button>
               </form>
             </CardContent>
           </Card>
@@ -243,6 +330,75 @@ export default function FriendsPage() {
             </div>
           )}
         </div>
+
+        {receivedInvitations.length > 0 && (
+          <section className="mt-12">
+            <h2 className="text-2xl font-bold mb-4">Invitaciones Pendientes</h2>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {receivedInvitations.map((invitation) => (
+                <Card key={invitation.id} className="border-primary/20 bg-primary/5">
+                  <CardContent className="p-4">
+                    <div className="mb-4">
+                      <h3 className="font-bold text-lg">{invitation.inviterName}</h3>
+                      <div className="flex items-center gap-1.5 text-muted-foreground text-sm">
+                        <Mail className="w-3.5 h-3.5" />
+                        <span>{invitation.inviterEmail}</span>
+                      </div>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-4">Te ha enviado una invitación de amistad</p>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => handleAcceptInvitation(invitation.id, invitation.inviterName)}
+                        disabled={acceptingInvitationId === invitation.id}
+                        className="flex-1"
+                      >
+                        {acceptingInvitationId === invitation.id ? 'Aceptando...' : 'Aceptar'}
+                      </Button>
+                      <Button
+                        onClick={() => handleRejectInvitation(invitation.id)}
+                        disabled={rejectingInvitationId === invitation.id}
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        {rejectingInvitationId === invitation.id ? 'Rechazando...' : 'Rechazar'}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {sentInvitations.length > 0 && (
+          <section className="mt-12">
+            <h2 className="text-2xl font-bold mb-4">Invitaciones Enviadas</h2>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {sentInvitations.map((invitation) => (
+                <Card key={invitation.id} className="border-amber-200 bg-amber-50">
+                  <CardContent className="p-4">
+                    <div className="mb-4">
+                      <h3 className="font-bold text-lg">Esperando respuesta</h3>
+                      <div className="flex items-center gap-1.5 text-muted-foreground text-sm">
+                        <Mail className="w-3.5 h-3.5" />
+                        <span>{invitation.toEmail}</span>
+                      </div>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-4">Enviaste una invitación a este correo el {invitation.createdAt ? new Date(invitation.createdAt).toLocaleDateString('es-ES') : 'hace poco'}</p>
+                    <Button
+                      onClick={() => handleCancelInvitation(invitation.id)}
+                      disabled={cancelingInvitationId === invitation.id}
+                      variant="outline"
+                      className="w-full text-amber-700 border-amber-300 hover:bg-amber-100"
+                    >
+                      {cancelingInvitationId === invitation.id ? 'Cancelando...' : 'Cancelar'}
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </section>
+        )}
         </main>
       </div>
     </ProtectedRoute>

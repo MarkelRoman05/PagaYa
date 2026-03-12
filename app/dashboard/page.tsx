@@ -1,24 +1,26 @@
 "use client"
 
+import { useState } from 'react';
 import { usePagaYa } from '@/hooks/use-pagaya';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { Navbar } from '@/components/layout/Navbar';
 import { DebtCard } from '@/components/debts/DebtCard';
+import { NewDebtDialog } from '@/components/debts/NewDebtSheet';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { ArrowUpRight, ArrowDownLeft, Plus, Wallet } from 'lucide-react';
-import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/utils';
 
 export default function Dashboard() {
+  const [isNewDebtOpen, setIsNewDebtOpen] = useState(false);
   const { friends, debts, markAsPaid, removeDebt, isReady, isLoadingData, user } = usePagaYa();
 
   const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
   const fullName = typeof userMetadata.full_name === 'string' ? userMetadata.full_name.trim() : '';
   const firstName = fullName || user?.email?.split('@')[0] || 'Usuario';
 
-  const pendingDebts = debts.filter(d => d.status === 'pending');
+  const pendingDebts = debts.filter(d => d.status !== 'paid');
   const owedToMe = pendingDebts.filter(d => d.type === 'owed_to_me');
   const owedByMe = pendingDebts.filter(d => d.type === 'owed_by_me');
 
@@ -35,15 +37,13 @@ export default function Dashboard() {
         <main className="container mx-auto px-4 py-8">
         <header className="flex justify-between items-center mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Hola, {firstName}</h1>
-            <p className="text-muted-foreground">Esto es lo que debes y lo que te deben.</p>
+            <h1 className="text-3xl font-bold text-foreground">¡Hola, {firstName}!</h1>
+            <p className="text-muted-foreground">Esto es lo que debes y lo que te deben. Págalo cuanto antes, que si no tu amigo se enfadará.</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button asChild className="rounded-full shadow-lg">
-              <Link href="/debts/new">
-                <Plus className="w-5 h-5 mr-2" />
-                Nueva deuda
-              </Link>
+            <Button onClick={() => setIsNewDebtOpen(true)} className="rounded-full shadow-lg">
+              <Plus className="w-5 h-5 mr-2" />
+              Nueva deuda
             </Button>
           </div>
         </header>
@@ -67,7 +67,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-4xl font-bold">{formatCurrency(totalOwedToMe)}</div>
-              <p className="text-primary-foreground/70 text-sm mt-1">{owedToMe.length} deudas pendientes</p>
+              <p className="text-primary-foreground/70 text-sm mt-1">{owedToMe.length} deuda(s) pendiente(s)</p>
             </CardContent>
           </Card>
 
@@ -83,7 +83,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-4xl font-bold text-foreground">{formatCurrency(totalOwedByMe)}</div>
-              <p className="text-muted-foreground text-sm mt-1">{owedByMe.length} deudas pendientes</p>
+              <p className="text-muted-foreground text-sm mt-1">{owedByMe.length} deuda(s) pendiente(s)</p>
             </CardContent>
           </Card>
         </section>
@@ -111,7 +111,7 @@ export default function Dashboard() {
                   />
                 ))
               ) : (
-                <EmptyState />
+                <EmptyState onOpenDebt={() => setIsNewDebtOpen(true)} />
               )}
             </TabsContent>
 
@@ -127,7 +127,7 @@ export default function Dashboard() {
                   />
                 ))
               ) : (
-                <EmptyState />
+                <EmptyState onOpenDebt={() => setIsNewDebtOpen(true)} />
               )}
             </TabsContent>
 
@@ -143,26 +143,30 @@ export default function Dashboard() {
                   />
                 ))
               ) : (
-                <EmptyState />
+                <EmptyState onOpenDebt={() => setIsNewDebtOpen(true)} />
               )}
             </TabsContent>
           </Tabs>
         </section>
+
+        <NewDebtDialog open={isNewDebtOpen} onOpenChange={setIsNewDebtOpen} />
         </main>
       </div>
     </ProtectedRoute>
   );
 }
 
-function EmptyState() {
+function EmptyState({ onOpenDebt }: { onOpenDebt: () => void }) {
   return (
-    <div className="text-center py-20 bg-white/50 rounded-2xl border border-dashed flex flex-col items-center">
-      <Wallet className="w-12 h-12 text-muted-foreground/30 mb-4" />
-      <h3 className="text-lg font-medium text-muted-foreground">No hay deudas pendientes</h3>
-      <p className="text-sm text-muted-foreground/70">Todo está al día. Relájate y disfuta.</p>
-      <Button asChild variant="link" className="mt-2">
-        <Link href="/debts/new">Crear una nueva</Link>
-      </Button>
-    </div>
+    <>
+      <div className="text-center py-20 bg-white/50 rounded-2xl border border-dashed flex flex-col items-center">
+        <Wallet className="w-12 h-12 text-muted-foreground/30 mb-4" />
+        <h3 className="text-lg font-medium text-muted-foreground">No hay deudas pendientes</h3>
+        <p className="text-sm text-muted-foreground/70">Todo está al día. Relájate y disfuta.</p>
+        <Button variant="link" onClick={onOpenDebt} className="mt-2">
+          Crear una nueva
+        </Button>
+      </div>
+    </>
   );
 }

@@ -5,7 +5,7 @@ import { Debt, Friend } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, Trash2, Clock, User } from 'lucide-react';
+import { CheckCircle2, Trash2, Clock, User, Euro } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -37,14 +37,31 @@ export function DebtCard({ debt, friend, onPaid, onDelete }: DebtCardProps) {
     setMounted(true);
   }, []);
 
+  const isOwedToMe = debt.type === 'owed_to_me';
+  const isPaid = debt.status === 'paid';
+  const isPaymentRequested = debt.status === 'payment_requested';
+
+  const canRequestConfirmation = !isOwedToMe && debt.status === 'pending';
+  const canConfirmPayment = isOwedToMe && (debt.status === 'pending' || debt.status === 'payment_requested');
+
+  const actionLabel = isUpdatingStatus
+    ? 'Guardando...'
+    : canRequestConfirmation
+      ? 'Solicitar marcar como pagado'
+      : canConfirmPayment
+        ? (isPaymentRequested ? 'Confirmar pago' : 'Marcar como pagado')
+        : 'Esperando confirmación de tu amigo';
+
   const handleMarkAsPaid = async () => {
     setIsUpdatingStatus(true);
 
     try {
       await onPaid(debt.id);
       toast({
-        title: 'Pago registrado',
-        description: 'La deuda ya aparece como pagada.',
+        title: canRequestConfirmation ? 'Solicitud enviada' : 'Pago confirmado',
+        description: canRequestConfirmation
+          ? 'La otra persona debe confirmar que el pago se ha recibido.'
+          : 'Has saldado esta deuda. ¡Bien hecho!',
       });
     } catch (error) {
       toast({
@@ -77,12 +94,25 @@ export function DebtCard({ debt, friend, onPaid, onDelete }: DebtCardProps) {
     }
   };
 
-  const isOwedToMe = debt.type === 'owed_to_me';
-  const isPaid = debt.status === 'paid';
+  const formattedDateTime = mounted
+    ? new Date(debt.createdAt).toLocaleString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
 
-  const formattedDate = mounted 
-    ? new Date(debt.createdAt).toLocaleDateString() 
-    : "";
+  const formattedPaidDateTime = mounted && debt.paidAt
+    ? new Date(debt.paidAt).toLocaleString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '';
 
   return (
     <>
@@ -98,6 +128,11 @@ export function DebtCard({ debt, friend, onPaid, onDelete }: DebtCardProps) {
                 <Badge variant={isOwedToMe ? "default" : "secondary"} className="text-[10px] uppercase font-bold tracking-wider">
                   {isOwedToMe ? "Me deben" : "Debo"}
                 </Badge>
+                {isPaymentRequested && (
+                  <Badge variant="outline" className="text-[10px] uppercase font-bold text-amber-700 border-amber-600 bg-amber-50">
+                    Por confirmar
+                  </Badge>
+                )}
                 {isPaid && <Badge variant="outline" className="text-[10px] uppercase font-bold text-teal-600 border-teal-600 bg-teal-50">Pagado</Badge>}
               </div>
               <h3 className="font-semibold text-lg">{debt.description}</h3>
@@ -113,33 +148,38 @@ export function DebtCard({ debt, friend, onPaid, onDelete }: DebtCardProps) {
               )}>
                 {formatCurrency(debt.amount)}
               </span>
-              <div className="flex items-center justify-end gap-1 text-[10px] text-muted-foreground mt-1 uppercase font-medium">
+              <div className="flex items-center justify-end gap-1 text-[12px] text-muted-foreground mt-1 uppercase font-medium">
                 <Clock className="w-3 h-3" />
-                {formattedDate}
+                <span>Creado el</span>
+                {formattedDateTime}
               </div>
+              {isPaid && formattedPaidDateTime && (
+                <div className="text-[12px] text-teal-700 mt-1 font-medium flex items-center justify-end gap-1">
+                  <Euro className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>CONFIRMADO EL PAGO EL {formattedPaidDateTime}</span>
+                </div>
+              )}
             </div>
           </div>
 
           {!isPaid && (
             <div className="flex gap-2 mt-4 pt-4 border-t border-muted">
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 className="flex-1 text-teal-600 border-teal-200 hover:bg-teal-50 hover:text-teal-700"
                 onClick={handleMarkAsPaid}
-                disabled={isUpdatingStatus || isDeleting}
+                disabled={isUpdatingStatus || isDeleting || (!canRequestConfirmation && !canConfirmPayment)}
               >
                 <CheckCircle2 className="w-4 h-4 mr-2" />
-                {isUpdatingStatus ? 'Guardando...' : 'Pagado'}
+                {actionLabel}
               </Button>
-              
-
 
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     className="text-destructive hover:bg-destructive/10"
                     disabled={isUpdatingStatus || isDeleting}
                   >
@@ -155,7 +195,7 @@ export function DebtCard({ debt, friend, onPaid, onDelete }: DebtCardProps) {
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                    <AlertDialogAction 
+                    <AlertDialogAction
                       onClick={handleDelete}
                       disabled={isDeleting}
                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"

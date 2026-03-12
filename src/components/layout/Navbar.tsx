@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Users, PlusCircle, History, Wallet, CircleUser } from 'lucide-react';
+import { Home, Users, History, Wallet, CircleUser } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePagaYa } from '@/hooks/use-pagaya';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -19,7 +19,6 @@ export function Navbar() {
   const navItems = [
     { name: 'Inicio', href: '/dashboard', icon: Home },
     { name: 'Amigos', href: '/friends', icon: Users },
-    { name: 'Nueva', href: '/debts/new', icon: PlusCircle },
     { name: 'Historial', href: '/history', icon: History },
     { name: 'Perfil', href: '/profile', icon: CircleUser },
   ];
