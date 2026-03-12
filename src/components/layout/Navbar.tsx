@@ -1,0 +1,86 @@
+"use client"
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { Home, Users, PlusCircle, History, LogOut, Wallet } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { usePagaYa } from '@/hooks/use-pagaya';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
+
+export function Navbar() {
+  const pathname = usePathname();
+  const { user, signOut } = usePagaYa();
+  const { toast } = useToast();
+
+  const displayName = user?.email?.split('@')[0] || 'U';
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      toast({
+        title: 'No se pudo cerrar sesión',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const navItems = [
+    { name: 'Inicio', href: '/dashboard', icon: Home },
+    { name: 'Amigos', href: '/friends', icon: Users },
+    { name: 'Nueva', href: '/debts/new', icon: PlusCircle },
+    { name: 'Historial', href: '/history', icon: History },
+  ];
+
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-border md:top-0 md:bottom-auto md:h-16 md:border-b md:border-t-0">
+      <div className="container mx-auto h-full flex items-center justify-between px-4">
+        <div className="hidden md:flex items-center gap-2 font-bold text-primary text-xl">
+          <Wallet className="w-6 h-6" />
+          <span>PagaYa</span>
+        </div>
+        
+        <div className="flex w-full md:w-auto justify-around md:gap-8 h-full">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = pathname === item.href;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={cn(
+                  "flex flex-col md:flex-row items-center justify-center gap-1 md:gap-2 px-3 py-2 text-xs md:text-sm font-medium transition-colors h-full border-t-2 md:border-t-0 md:border-b-2",
+                  isActive 
+                    ? "text-primary border-primary" 
+                    : "text-muted-foreground border-transparent hover:text-primary"
+                )}
+              >
+                <Icon className="w-6 h-6 md:w-5 md:h-5" />
+                <span>{item.name}</span>
+              </Link>
+            );
+          })}
+        </div>
+
+          <div className="hidden md:flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold uppercase">
+              {displayName.charAt(0)}
+            </div>
+            <div className="text-right">
+              <p className="text-sm font-medium leading-none">{displayName}</p>
+              <p className="text-xs text-muted-foreground">{user?.email}</p>
+            </div>
+            <Button type="button" variant="ghost" size="icon" onClick={handleSignOut} aria-label="Cerrar sesión">
+              <LogOut className="w-4 h-4" />
+            </Button>
+        </div>
+
+          <Button type="button" variant="ghost" size="icon" onClick={handleSignOut} aria-label="Cerrar sesión" className="md:hidden">
+           <LogOut className="w-4 h-4" />
+          </Button>
+      </div>
+    </nav>
+  );
+}
