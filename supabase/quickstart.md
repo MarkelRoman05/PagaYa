@@ -19,12 +19,14 @@
    Si lo desactivas, el login funciona justo después del registro.
    Si lo activas, el usuario deberá confirmar su correo antes de entrar.
 
-## 3. Crear tablas y políticas
+## 3. Crear tablas y politicas
 
 1. Ve a SQL Editor.
 2. Crea una nueva query.
 3. Copia el contenido de [supabase/schema.sql](supabase/schema.sql).
 4. Ejecútalo completo.
+
+Este script tambien crea el bucket publico avatars y sus politicas RLS para que cada usuario pueda subir solo sus propias imagenes de perfil.
 
 ## 4. Sacar las claves que necesita la app
 

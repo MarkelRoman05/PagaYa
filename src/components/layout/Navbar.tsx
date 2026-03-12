@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Users, PlusCircle, History, LogOut, Wallet } from 'lucide-react';
+import { Home, Users, PlusCircle, History, LogOut, Wallet, CircleUser } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePagaYa } from '@/hooks/use-pagaya';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 
 export function Navbar() {
@@ -13,7 +14,10 @@ export function Navbar() {
   const { user, signOut } = usePagaYa();
   const { toast } = useToast();
 
-  const displayName = user?.email?.split('@')[0] || 'U';
+  const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
+  const fullName = typeof userMetadata.full_name === 'string' ? userMetadata.full_name.trim() : '';
+  const avatarUrl = typeof userMetadata.avatar_url === 'string' ? userMetadata.avatar_url.trim() : '';
+  const displayName = fullName || user?.email?.split('@')[0] || 'U';
 
   const handleSignOut = async () => {
     try {
@@ -32,6 +36,7 @@ export function Navbar() {
     { name: 'Amigos', href: '/friends', icon: Users },
     { name: 'Nueva', href: '/debts/new', icon: PlusCircle },
     { name: 'Historial', href: '/history', icon: History },
+    { name: 'Perfil', href: '/profile', icon: CircleUser },
   ];
 
   return (
@@ -65,9 +70,12 @@ export function Navbar() {
         </div>
 
           <div className="hidden md:flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold uppercase">
-              {displayName.charAt(0)}
-            </div>
+            <Avatar className="w-8 h-8">
+              {avatarUrl ? <AvatarImage src={avatarUrl} alt={`Avatar de ${displayName}`} /> : null}
+              <AvatarFallback className="bg-primary/10 text-primary font-bold uppercase">
+                {displayName.charAt(0)}
+              </AvatarFallback>
+            </Avatar>
             <div className="text-right">
               <p className="text-sm font-medium leading-none">{displayName}</p>
               <p className="text-xs text-muted-foreground">{user?.email}</p>

@@ -8,17 +8,29 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { UserPlus, Search, Mail, User } from 'lucide-react';
+import { UserPlus, Search, Mail, User, Trash2 } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 export default function FriendsPage() {
-  const { friends, addFriend, isReady, isLoadingData } = usePagaYa();
+  const { friends, addFriend, removeFriend, isReady, isLoadingData } = usePagaYa();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [newFriend, setNewFriend] = useState({ name: '', email: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingFriendId, setDeletingFriendId] = useState<string | null>(null);
 
   const filteredFriends = friends.filter(f => 
     f.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -86,6 +98,27 @@ export default function FriendsPage() {
     }
   };
 
+  const handleDeleteFriend = async (friendId: string, friendName: string) => {
+    setDeletingFriendId(friendId);
+
+    try {
+      await removeFriend(friendId);
+
+      toast({
+        title: 'Amigo eliminado',
+        description: `${friendName} y sus deudas asociadas se han borrado.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'No se pudo eliminar',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeletingFriendId(null);
+    }
+  };
+
   if (!isReady) return null;
 
   return (
@@ -96,12 +129,12 @@ export default function FriendsPage() {
         <main className="container mx-auto px-4 py-8">
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold">Mis Amigos</h1>
+            <h1 className="text-3xl font-bold">Mis amigos</h1>
             <p className="text-muted-foreground">Gestiona las personas con las que compartes gastos.</p>
           </div>
           <Button onClick={() => setIsAdding(!isAdding)} className="rounded-full">
             <UserPlus className="w-5 h-5 mr-2" />
-            Añadir Amigo
+            Añadir amigo
           </Button>
         </header>
 
@@ -136,7 +169,7 @@ export default function FriendsPage() {
                     className="bg-white"
                   />
                 </div>
-                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : 'Guardar Amigo'}</Button>
+                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : 'Guardar amigo'}</Button>
               </form>
             </CardContent>
           </Card>
@@ -168,11 +201,38 @@ export default function FriendsPage() {
                       <span>{friend.email}</span>
                     </div>
                   </div>
-                  <Button asChild variant="ghost" size="icon" className="rounded-full">
-                    <a href={`mailto:${friend.email}`} aria-label={`Enviar correo a ${friend.name}`}>
-                      <Mail className="w-4 h-4 text-muted-foreground" />
-                    </a>
-                  </Button>
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive"
+                        disabled={deletingFriendId === friend.id}
+                        aria-label={`Eliminar a ${friend.name}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>¿Estás seguro que deseas eliminar a {friend.name}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Esta acción no se puede deshacer. También se eliminarán sus deudas asociadas.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => handleDeleteFriend(friend.id, friend.name)}
+                          disabled={deletingFriendId === friend.id}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          {deletingFriendId === friend.id ? 'Eliminando...' : 'Eliminar'}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </CardContent>
               </Card>
             ))

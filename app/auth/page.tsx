@@ -171,7 +171,7 @@ function AuthPageContent() {
                   <Mail className="w-5 h-5 text-primary" />
                   Datos en la nube
                 </CardTitle>
-                <CardDescription>Tus amigos y deudas quedan guardados en Supabase.</CardDescription>
+                <CardDescription>Tus amigos y deudas quedan guardados.</CardDescription>
               </CardHeader>
             </Card>
           </div>

@@ -7,6 +7,12 @@ import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase';
 
 type AddFriendInput = Pick<Friend, 'name' | 'email' | 'avatar'>;
 type AddDebtInput = Pick<Debt, 'friendId' | 'amount' | 'description' | 'type'>;
+type UpdateProfileInput = {
+  fullName: string;
+  avatarFile: File | null;
+};
+
+const AVATAR_BUCKET = 'avatars';
 
 interface FriendRow {
   id: string;
@@ -41,9 +47,12 @@ interface PagaYaContextValue extends AppState {
   signOut: () => Promise<void>;
   refreshData: () => Promise<void>;
   addFriend: (friend: AddFriendInput) => Promise<Friend>;
+  removeFriend: (friendId: string) => Promise<void>;
   addDebt: (debt: AddDebtInput) => Promise<Debt>;
   markAsPaid: (debtId: string) => Promise<void>;
   removeDebt: (debtId: string) => Promise<void>;
+  updateUserProfile: (profile: UpdateProfileInput) => Promise<void>;
+  updatePassword: (newPassword: string) => Promise<void>;
 }
 
 const PagaYaContext = createContext<PagaYaContextValue | null>(null);
@@ -279,6 +288,22 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
     return createdFriend;
   };
 
+  const removeFriend = async (friendId: string) => {
+    const { supabase } = await ensureAuthenticatedUser();
+
+    const { error } = await supabase.from('friends').delete().eq('id', friendId);
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo eliminar el amigo.'));
+    }
+
+    setState((currentState) => ({
+      ...currentState,
+      friends: currentState.friends.filter((friend) => friend.id !== friendId),
+      debts: currentState.debts.filter((debt) => debt.friendId !== friendId),
+    }));
+  };
+
   const addDebt = async (debt: AddDebtInput) => {
     const { supabase, user: activeUser } = await ensureAuthenticatedUser();
 
@@ -341,6 +366,67 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  const updateUserProfile = async ({ fullName, avatarFile }: UpdateProfileInput) => {
+    const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+
+    const normalizedName = fullName.trim();
+    let uploadedAvatarUrl: string | null | undefined;
+
+    if (avatarFile) {
+      const extension = avatarFile.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const safeExtension = extension.replace(/[^a-z0-9]/g, '') || 'jpg';
+      const filePath = `${activeUser.id}/${Date.now()}.${safeExtension}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from(AVATAR_BUCKET)
+        .upload(filePath, avatarFile, {
+          cacheControl: '3600',
+          upsert: true,
+          contentType: avatarFile.type || undefined,
+        });
+
+      if (uploadError) {
+        throw new Error(getFriendlyErrorMessage(uploadError, 'No se pudo subir la imagen de perfil.'));
+      }
+
+      const { data: publicData } = supabase.storage.from(AVATAR_BUCKET).getPublicUrl(filePath);
+      uploadedAvatarUrl = publicData.publicUrl;
+    }
+
+    const { data, error } = await supabase.auth.updateUser({
+      data: {
+        full_name: normalizedName || null,
+        ...(uploadedAvatarUrl ? { avatar_url: uploadedAvatarUrl } : {}),
+      },
+    });
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo actualizar tu perfil.'));
+    }
+
+    if (data.user) {
+      setUser(data.user);
+    }
+  };
+
+  const updatePassword = async (newPassword: string) => {
+    const { supabase } = await ensureAuthenticatedUser();
+
+    const normalizedPassword = newPassword.trim();
+
+    if (normalizedPassword.length < 8) {
+      throw new Error('La nueva contraseña debe tener al menos 8 caracteres.');
+    }
+
+    const { error } = await supabase.auth.updateUser({
+      password: normalizedPassword,
+    });
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo actualizar la contraseña.'));
+    }
+  };
+
   return createElement(
     PagaYaContext.Provider,
     {
@@ -359,9 +445,12 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         signOut,
         refreshData,
         addFriend,
+        removeFriend,
         addDebt,
         markAsPaid,
         removeDebt,
+        updateUserProfile,
+        updatePassword,
       },
     },
     children

@@ -14,7 +14,9 @@ import { formatCurrency } from '@/lib/utils';
 export default function Dashboard() {
   const { friends, debts, markAsPaid, removeDebt, isReady, isLoadingData, user } = usePagaYa();
 
-  const firstName = user?.email?.split('@')[0] || 'Usuario';
+  const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
+  const fullName = typeof userMetadata.full_name === 'string' ? userMetadata.full_name.trim() : '';
+  const firstName = fullName || user?.email?.split('@')[0] || 'Usuario';
 
   const pendingDebts = debts.filter(d => d.status === 'pending');
   const owedToMe = pendingDebts.filter(d => d.type === 'owed_to_me');
@@ -34,7 +36,7 @@ export default function Dashboard() {
         <header className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Hola, {firstName}</h1>
-            <p className="text-muted-foreground">Aquí tienes el resumen de tus cuentas sincronizadas.</p>
+            <p className="text-muted-foreground">Esto es lo que debes y lo que te deben.</p>
           </div>
           <div className="flex items-center gap-2">
             <Button asChild className="rounded-full shadow-lg">
@@ -89,7 +91,7 @@ export default function Dashboard() {
         <section>
           <Tabs defaultValue="all" className="w-full">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">Actividad Reciente</h2>
+              <h2 className="text-xl font-bold">Actividad</h2>
               <TabsList className="bg-white/50 border">
                 <TabsTrigger value="all">Todas</TabsTrigger>
                 <TabsTrigger value="to-me">Me deben</TabsTrigger>
@@ -157,7 +159,7 @@ function EmptyState() {
     <div className="text-center py-20 bg-white/50 rounded-2xl border border-dashed flex flex-col items-center">
       <Wallet className="w-12 h-12 text-muted-foreground/30 mb-4" />
       <h3 className="text-lg font-medium text-muted-foreground">No hay deudas pendientes</h3>
-      <p className="text-sm text-muted-foreground/70">¡Qué buen amigo eres! Todo está al día.</p>
+      <p className="text-sm text-muted-foreground/70">Todo está al día. Relájate y disfuta.</p>
       <Button asChild variant="link" className="mt-2">
         <Link href="/debts/new">Crear una nueva</Link>
       </Button>
