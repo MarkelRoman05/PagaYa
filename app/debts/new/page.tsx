@@ -109,10 +109,10 @@ export default function NewDebt() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-background pb-20 md:pt-20">
+      <div className="min-h-screen bg-background pb-24 md:pb-20 md:pt-20">
         <Navbar />
 
-        <main className="container mx-auto px-4 py-8 max-w-xl">
+        <main className="container mx-auto max-w-xl px-4 py-6 sm:px-6 sm:py-8">
           <div className="mb-6">
             <Button asChild variant="ghost" size="sm" className="-ml-2">
               <Link href="/dashboard" className="flex items-center gap-1">
@@ -120,7 +120,7 @@ export default function NewDebt() {
                 Volver
               </Link>
             </Button>
-            <h1 className="text-3xl font-bold mt-2">Nueva deuda</h1>
+            <h1 className="mt-2 text-2xl font-bold sm:text-3xl">Nueva deuda</h1>
           </div>
 
           {isLoadingData && (
@@ -142,7 +142,7 @@ export default function NewDebt() {
                     onValueChange={(val) =>
                       setFormData({ ...formData, type: val as any })
                     }
-                    className="grid grid-cols-2 gap-4"
+                    className="grid gap-4 sm:grid-cols-2"
                   >
                     <Label
                       htmlFor="type-me"

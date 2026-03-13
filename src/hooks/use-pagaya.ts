@@ -1,6 +1,6 @@
 "use client"
 
-import { ReactNode, createContext, createElement, useContext, useEffect, useMemo, useState } from 'react';
+import { ReactNode, createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { AppState, AuthCredentials, Debt, DebtStatus, DebtType, Friend, FriendInvitation, InvitationStatus } from '@/lib/types';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase';
@@ -52,7 +52,22 @@ interface DebtRow {
   status: DebtStatus;
   created_at: string;
   paid_at: string | null;
+  payment_request_rejected_at: string | null;
+  payment_request_rejected_by: string | null;
+  payment_request_rejection_count: number | null;
 }
+
+type RealtimeRow = {
+  user_id?: string;
+  other_user_id?: string | null;
+  from_user_id?: string;
+  to_user_id?: string | null;
+  to_email?: string;
+};
+
+type RefreshDataOptions = {
+  silent?: boolean;
+};
 
 interface PagaYaContextValue extends AppState {
   isReady: boolean;
@@ -65,13 +80,14 @@ interface PagaYaContextValue extends AppState {
   signIn: (credentials: AuthCredentials) => Promise<void>;
   signUp: (credentials: AuthCredentials) => Promise<void>;
   signOut: () => Promise<void>;
-  refreshData: () => Promise<void>;
+  refreshData: (options?: RefreshDataOptions) => Promise<void>;
   sendInvitation: (invitation: SendInvitationInput) => Promise<FriendInvitation>;
   acceptInvitation: (invitationId: string) => Promise<Friend>;
   rejectInvitation: (invitationId: string) => Promise<void>;
   removeFriend: (friendId: string) => Promise<void>;
   addDebt: (debt: AddDebtInput) => Promise<Debt>;
   markAsPaid: (debtId: string) => Promise<void>;
+  rejectDebtPaymentRequest: (debtId: string) => Promise<void>;
   removeDebt: (debtId: string) => Promise<void>;
   updateUserProfile: (profile: UpdateProfileInput) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
@@ -121,6 +137,9 @@ function mapDebtRow(row: DebtRow): Debt {
     status: row.status,
     createdAt: row.created_at,
     paidAt: row.paid_at ?? undefined,
+    paymentRequestRejectedAt: row.payment_request_rejected_at ?? undefined,
+    paymentRequestRejectedByUserId: row.payment_request_rejected_by ?? undefined,
+    paymentRequestRejectionCount: row.payment_request_rejection_count ?? 0,
   };
 }
 
@@ -158,11 +177,15 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const configured = useMemo(() => isSupabaseConfigured(), []);
+  const pendingRealtimeRefreshRef = useRef<number | null>(null);
 
-  const refreshData = async () => {
+  const refreshData = useCallback(async (options?: RefreshDataOptions) => {
     const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+    const silent = options?.silent ?? false;
 
-    setIsLoadingData(true);
+    if (!silent) {
+      setIsLoadingData(true);
+    }
 
     try {
       const [
@@ -215,9 +238,24 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         debts: mappedDebts,
       });
     } finally {
-      setIsLoadingData(false);
+      if (!silent) {
+        setIsLoadingData(false);
+      }
     }
-  };
+  }, []);
+
+  const scheduleRealtimeRefresh = useCallback(() => {
+    if (pendingRealtimeRefreshRef.current) {
+      clearTimeout(pendingRealtimeRefreshRef.current);
+    }
+
+    pendingRealtimeRefreshRef.current = window.setTimeout(() => {
+      pendingRealtimeRefreshRef.current = null;
+      void refreshData({ silent: true }).catch((error) => {
+        console.error('No se pudieron refrescar los datos tras un cambio en tiempo real', error);
+      });
+    }, 250);
+  }, [refreshData]);
 
   useEffect(() => {
     if (!configured) {
@@ -286,7 +324,106 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [configured]);
+  }, [configured, refreshData]);
+
+  useEffect(() => {
+    if (!configured || !user) {
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+
+    if (!supabase) {
+      return;
+    }
+
+    const channel = supabase.channel(`pagaya-live-sync-${user.id}`);
+
+    channel.on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'friends',
+    }, (payload) => {
+      const nextRow = payload.new as RealtimeRow;
+      const prevRow = payload.old as RealtimeRow;
+      const ownerId = nextRow.user_id ?? prevRow.user_id;
+      const otherUserId = nextRow.other_user_id ?? prevRow.other_user_id;
+
+      if (ownerId === user.id || otherUserId === user.id) {
+        scheduleRealtimeRefresh();
+      }
+    });
+
+    channel.on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'friend_invitations',
+    }, (payload) => {
+      const nextRow = payload.new as RealtimeRow;
+      const prevRow = payload.old as RealtimeRow;
+      const fromUserId = nextRow.from_user_id ?? prevRow.from_user_id;
+      const toUserId = nextRow.to_user_id ?? prevRow.to_user_id;
+      const toEmail = (nextRow.to_email ?? prevRow.to_email)?.toLowerCase();
+
+      if (fromUserId === user.id || toUserId === user.id || (user.email && toEmail === user.email.toLowerCase())) {
+        scheduleRealtimeRefresh();
+      }
+    });
+
+    channel.on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'debts',
+    }, scheduleRealtimeRefresh);
+
+    void channel.subscribe();
+
+    return () => {
+      if (pendingRealtimeRefreshRef.current) {
+        clearTimeout(pendingRealtimeRefreshRef.current);
+        pendingRealtimeRefreshRef.current = null;
+      }
+
+      void supabase.removeChannel(channel);
+    };
+  }, [configured, scheduleRealtimeRefresh, user]);
+
+  useEffect(() => {
+    if (!configured || !user) {
+      return;
+    }
+
+    const refreshSilently = () => {
+      void refreshData({ silent: true }).catch((error) => {
+        console.error('No se pudieron refrescar los datos de sincronizacion', error);
+      });
+    };
+
+    const onFocus = () => {
+      refreshSilently();
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshSilently();
+      }
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    const pollInterval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        refreshSilently();
+      }
+    }, 4000);
+
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      clearInterval(pollInterval);
+    };
+  }, [configured, refreshData, user]);
 
   const signIn = async ({ email, password }: AuthCredentials) => {
     const supabase = getSupabaseBrowserClient();
@@ -485,6 +622,8 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       debts: [createdDebt, ...currentState.debts],
     }));
 
+    scheduleRealtimeRefresh();
+
     return createdDebt;
   };
 
@@ -507,7 +646,15 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       setState((currentState) => ({
         ...currentState,
         debts: currentState.debts.map((item) =>
-          item.id === debtId ? { ...item, status: 'payment_requested', paidAt: undefined } : item
+          item.id === debtId
+            ? {
+                ...item,
+                status: 'payment_requested',
+                paidAt: undefined,
+                paymentRequestRejectedAt: undefined,
+                paymentRequestRejectedByUserId: undefined,
+              }
+            : item
         ),
       }));
 
@@ -524,23 +671,82 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
     setState((currentState) => ({
       ...currentState,
       debts: currentState.debts.map((item) =>
-        item.id === debtId ? { ...item, status: 'paid', paidAt } : item
+        item.id === debtId
+          ? {
+              ...item,
+              status: 'paid',
+              paidAt,
+              paymentRequestRejectedAt: undefined,
+              paymentRequestRejectedByUserId: undefined,
+            }
+          : item
+      ),
+    }));
+  };
+
+  const rejectDebtPaymentRequest = async (debtId: string) => {
+    const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+
+    const debt = state.debts.find((item) => item.id === debtId);
+
+    if (!debt) {
+      throw new Error('No se encontró la deuda seleccionada.');
+    }
+
+    const { error } = await supabase.rpc('reject_debt_payment_request', { debt_id_input: debtId });
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo rechazar la solicitud de pago.'));
+    }
+
+    setState((currentState) => ({
+      ...currentState,
+      debts: currentState.debts.map((item) =>
+        item.id === debtId
+          ? {
+              ...item,
+              status: 'pending',
+              paidAt: undefined,
+              paymentRequestRejectedAt: new Date().toISOString(),
+              paymentRequestRejectedByUserId: activeUser.id,
+              paymentRequestRejectionCount: item.paymentRequestRejectionCount + 1,
+            }
+          : item
       ),
     }));
   };
 
   const removeDebt = async (debtId: string) => {
-    const { supabase } = await ensureAuthenticatedUser();
+    const { supabase, user: activeUser } = await ensureAuthenticatedUser();
 
-    const { error } = await supabase.from('debts').delete().eq('id', debtId);
+    const debt = state.debts.find((item) => item.id === debtId);
+
+    if (!debt) {
+      throw new Error('No se encontro la deuda seleccionada.');
+    }
+
+    if (!debt.userId || debt.userId !== activeUser.id) {
+      throw new Error('Solo la persona que creo esta deuda puede eliminarla.');
+    }
+
+    const { data, error } = await supabase
+      .from('debts')
+      .delete()
+      .eq('id', debtId)
+      .eq('user_id', activeUser.id)
+      .select('id');
 
     if (error) {
       throw new Error(getFriendlyErrorMessage(error, 'No se pudo eliminar la deuda.'));
     }
 
+    if (!data || data.length === 0) {
+      throw new Error('No se pudo eliminar la deuda. Puede que no tengas permisos o que ya no exista.');
+    }
+
     setState((currentState) => ({
       ...currentState,
-      debts: currentState.debts.filter((debt) => debt.id !== debtId),
+      debts: currentState.debts.filter((item) => item.id !== debtId),
     }));
   };
 
@@ -640,6 +846,7 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         removeFriend,
         addDebt,
         markAsPaid,
+        rejectDebtPaymentRequest,
         removeDebt,
         updateUserProfile,
         updatePassword,

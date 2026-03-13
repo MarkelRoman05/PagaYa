@@ -1,8 +1,9 @@
 "use client"
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Users, History, Wallet, CircleUser } from 'lucide-react';
+import { Home, Users, History, CircleUser } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePagaYa } from '@/hooks/use-pagaya';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -24,14 +25,21 @@ export function Navbar() {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-border md:top-0 md:bottom-auto md:h-16 md:border-b md:border-t-0">
-      <div className="container mx-auto h-full flex items-center justify-between px-4">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85 md:top-0 md:bottom-auto md:h-16 md:border-b md:border-t-0">
+      <div className="container mx-auto flex h-full max-w-6xl items-center justify-between px-2 sm:px-4">
         <div className="hidden md:flex items-center gap-2 font-bold text-primary text-xl">
-          <Wallet className="w-6 h-6" />
+          <Image
+            src="/images/PagaYa_logo.svg"
+            alt="Logo de PagaYa"
+            width={80}
+            height={50}
+            className="w-11 h-11"
+            priority
+          />
           <span>PagaYa</span>
         </div>
         
-        <div className="flex w-full md:w-auto justify-around md:gap-8 h-full">
+        <div className="flex h-full w-full items-stretch justify-between gap-1 md:w-auto md:justify-around md:gap-6 lg:gap-8">
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
@@ -40,30 +48,30 @@ export function Navbar() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "flex flex-col md:flex-row items-center justify-center gap-1 md:gap-2 px-3 py-2 text-xs md:text-sm font-medium transition-colors h-full border-t-2 md:border-t-0 md:border-b-2",
+                  "flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] font-medium transition-colors h-full border-t-2 md:min-w-fit md:flex-none md:flex-row md:gap-2 md:px-3 md:text-sm md:border-t-0 md:border-b-2",
                   isActive 
                     ? "text-primary border-primary" 
                     : "text-muted-foreground border-transparent hover:text-primary"
                 )}
               >
-                <Icon className="w-6 h-6 md:w-5 md:h-5" />
-                <span>{item.name}</span>
+                <Icon className="h-5 w-5 shrink-0 md:h-5 md:w-5" />
+                <span className="truncate leading-none md:overflow-visible md:text-clip md:whitespace-nowrap">{item.name}</span>
               </Link>
             );
           })}
         </div>
 
           <div className="hidden md:flex items-center gap-3">
+            <div className="text-right">
+              <p className="text-sm font-medium leading-none">{displayName}</p>
+              <p className="text-xs text-muted-foreground">{user?.email}</p>
+            </div>
             <Avatar className="w-8 h-8">
               {avatarUrl ? <AvatarImage src={avatarUrl} alt={`Avatar de ${displayName}`} /> : null}
               <AvatarFallback className="bg-primary/10 text-primary font-bold uppercase">
                 {displayName.charAt(0)}
               </AvatarFallback>
             </Avatar>
-            <div className="text-right">
-              <p className="text-sm font-medium leading-none">{displayName}</p>
-              <p className="text-xs text-muted-foreground">{user?.email}</p>
-            </div>
         </div>
       </div>
     </nav>

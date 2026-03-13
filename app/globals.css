@@ -61,7 +61,10 @@
   * {
     @apply border-border;
   }
+  html {
+    @apply overflow-x-hidden;
+  }
   body {
-    @apply bg-background text-foreground font-body;
+    @apply min-h-screen overflow-x-hidden bg-background text-foreground font-body;
   }
 }

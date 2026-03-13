@@ -57,11 +57,34 @@ create table if not exists public.debts (
   type text not null check (type in ('owed_to_me', 'owed_by_me')),
   status text not null default 'pending' check (status in ('pending', 'payment_requested', 'paid')),
   created_at timestamptz not null default timezone('utc', now()),
-  paid_at timestamptz
+  paid_at timestamptz,
+  payment_request_rejected_at timestamptz,
+  payment_request_rejected_by uuid references auth.users(id) on delete set null,
+  payment_request_rejection_count integer not null default 0 check (payment_request_rejection_count >= 0)
 );
 
 alter table public.debts
   add column if not exists paid_at timestamptz;
+
+alter table public.debts
+  add column if not exists payment_request_rejected_at timestamptz;
+
+alter table public.debts
+  add column if not exists payment_request_rejected_by uuid references auth.users(id) on delete set null;
+
+alter table public.debts
+  add column if not exists payment_request_rejection_count integer not null default 0;
+
+update public.debts
+set payment_request_rejection_count = 0
+where payment_request_rejection_count is null;
+
+alter table public.debts
+  drop constraint if exists debts_payment_request_rejection_count_check;
+
+alter table public.debts
+  add constraint debts_payment_request_rejection_count_check
+  check (payment_request_rejection_count >= 0);
 
 alter table public.debts
   drop constraint if exists debts_status_check;
@@ -199,7 +222,9 @@ begin
 
   update public.debts
   set status = 'payment_requested',
-      paid_at = null
+      paid_at = null,
+      payment_request_rejected_at = null,
+      payment_request_rejected_by = null
   where id = v_debt.id;
 end;
 $$ language plpgsql security definer;
@@ -246,7 +271,55 @@ begin
 
   update public.debts
   set status = 'paid',
-      paid_at = timezone('utc', now())
+      paid_at = timezone('utc', now()),
+      payment_request_rejected_at = null,
+      payment_request_rejected_by = null
+  where id = v_debt.id;
+end;
+$$ language plpgsql security definer;
+
+create or replace function public.reject_debt_payment_request(debt_id_input uuid)
+returns void as $$
+declare
+  v_debt public.debts%rowtype;
+  v_current_user_id uuid;
+  v_is_creditor boolean;
+begin
+  v_current_user_id := auth.uid();
+
+  if v_current_user_id is null then
+    raise exception 'User not authenticated';
+  end if;
+
+  select *
+  into v_debt
+  from public.debts
+  where id = debt_id_input
+  for update;
+
+  if v_debt is null then
+    raise exception 'Debt not found';
+  end if;
+
+  v_is_creditor :=
+    (v_debt.type = 'owed_to_me' and v_debt.user_id = v_current_user_id)
+    or
+    (v_debt.type = 'owed_by_me' and v_debt.other_user_id = v_current_user_id);
+
+  if not v_is_creditor then
+    raise exception 'Only the creditor can reject the debt payment request';
+  end if;
+
+  if v_debt.status <> 'payment_requested' then
+    raise exception 'This debt has no payment request to reject';
+  end if;
+
+  update public.debts
+  set status = 'pending',
+      paid_at = null,
+      payment_request_rejected_at = timezone('utc', now()),
+      payment_request_rejected_by = v_current_user_id,
+      payment_request_rejection_count = coalesce(payment_request_rejection_count, 0) + 1
   where id = v_debt.id;
 end;
 $$ language plpgsql security definer;
@@ -256,6 +329,9 @@ grant execute on function public.request_debt_payment(uuid) to authenticated;
 
 revoke all on function public.confirm_debt_payment(uuid) from public;
 grant execute on function public.confirm_debt_payment(uuid) to authenticated;
+
+revoke all on function public.reject_debt_payment_request(uuid) from public;
+grant execute on function public.reject_debt_payment_request(uuid) to authenticated;
 
 -- Friend Invitations Policies
 drop policy if exists "invitations_select_own" on public.friend_invitations;

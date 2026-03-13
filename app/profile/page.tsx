@@ -174,13 +174,13 @@ export default function ProfilePage() {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-background pb-20 md:pt-20">
+      <div className="min-h-screen bg-background pb-24 md:pb-20 md:pt-20">
         <Navbar />
 
-        <main className="container mx-auto px-4 py-8">
+        <main className="container mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
           <header className="mb-8">
-            <h1 className="text-3xl font-bold text-foreground">Tu perfil</h1>
-            <p className="text-muted-foreground">Actualiza tu nombre y avatar para personalizar la app.</p>
+            <h1 className="text-2xl font-bold text-foreground sm:text-3xl">Tu perfil</h1>
+            <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">Actualiza tu nombre y avatar para personalizar la app.</p>
           </header>
 
           <div className="grid gap-6 lg:grid-cols-[320px_1fr]">

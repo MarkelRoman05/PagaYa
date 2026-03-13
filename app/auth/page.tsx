@@ -141,16 +141,16 @@ function AuthPageContent() {
 
   return (
     <div className="min-h-screen bg-background">
-      <main className="container mx-auto min-h-screen px-6 py-12 grid lg:grid-cols-[1.1fr_0.9fr] gap-10 items-center">
+      <main className="container mx-auto grid min-h-screen max-w-6xl gap-10 px-4 py-10 sm:px-6 sm:py-12 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
         <section className="space-y-8">
           <div className="inline-flex w-16 h-16 rounded-2xl bg-primary/10 text-primary items-center justify-center">
             <Wallet className="w-9 h-9" />
           </div>
           <div className="space-y-4">
-            <h1 className="text-4xl md:text-6xl font-bold tracking-tight font-headline">
+            <h1 className="text-4xl font-bold tracking-tight font-headline sm:text-5xl md:text-6xl">
               Paga<span className="text-primary">Ya</span>
             </h1>
-            <p className="max-w-xl text-lg text-muted-foreground">
+            <p className="max-w-xl text-base text-muted-foreground sm:text-lg">
               Accede a tu espacio personal y guarda de forma persistente amigos, deudas e historial desde cualquier dispositivo.
             </p>
           </div>

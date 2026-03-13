@@ -13,6 +13,9 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: 'PagaYa - Gestiona tus deudas con amigos',
   description: 'La forma más fácil y rápida de llevar las cuentas con tus amigos.',
+  icons: {
+    icon: '/icon.svg',
+  },
 };
 
 export default function RootLayout({

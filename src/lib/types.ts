@@ -33,6 +33,9 @@ export interface Debt {
   status: DebtStatus;
   createdAt: string;
   paidAt?: string;
+  paymentRequestRejectedAt?: string;
+  paymentRequestRejectedByUserId?: string;
+  paymentRequestRejectionCount: number;
 }
 
 export interface AppState {

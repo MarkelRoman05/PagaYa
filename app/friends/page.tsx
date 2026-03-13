@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { UserPlus, Search, Mail, User, Trash2 } from 'lucide-react';
+import { UserPlus, Search, Mail, RefreshCw, User, Trash2 } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/alert-dialog';
 
 export default function FriendsPage() {
-  const { friends, invitations, sendInvitation, acceptInvitation, rejectInvitation, removeFriend, isReady, isLoadingData, user } = usePagaYa();
+  const { friends, invitations, sendInvitation, acceptInvitation, rejectInvitation, removeFriend, isReady, isLoadingData, refreshData, user } = usePagaYa();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdding, setIsAdding] = useState(false);
@@ -206,23 +206,41 @@ export default function FriendsPage() {
     }
   };
 
+  const handleRefresh = async () => {
+    try {
+      await refreshData();
+    } catch (error) {
+      toast({
+        title: 'No se pudo recargar la agenda',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (!isReady) return null;
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-background pb-20 md:pt-20">
+      <div className="min-h-screen bg-background pb-24 md:pb-20 md:pt-20">
         <Navbar />
         
-        <main className="container mx-auto px-4 py-8">
+        <main className="container mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-bold">Mis amigos</h1>
-            <p className="text-muted-foreground">Gestiona las personas con las que compartes gastos.</p>
+            <h1 className="text-2xl font-bold sm:text-3xl">Mis amigos</h1>
+            <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">Gestiona las personas con las que compartes gastos.</p>
           </div>
-          <Button onClick={() => setIsAdding(!isAdding)} className="rounded-full">
-            <UserPlus className="w-5 h-5 mr-2" />
-            Añadir amigo
-          </Button>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+            <Button variant="outline" onClick={handleRefresh} disabled={isLoadingData} className="w-full sm:w-auto">
+              <RefreshCw className={isLoadingData ? 'animate-spin' : ''} />
+              Recargar
+            </Button>
+            <Button onClick={() => setIsAdding(!isAdding)} className="w-full rounded-full sm:w-auto">
+              <UserPlus className="w-5 h-5 mr-2" />
+              Añadir amigo
+            </Button>
+          </div>
         </header>
 
         {isLoadingData && (
@@ -234,7 +252,7 @@ export default function FriendsPage() {
         {isAdding && (
           <Card className="mb-8 border-primary/20 bg-primary/5">
             <CardContent className="p-6">
-              <form onSubmit={handleSendInvitation} className="grid md:grid-cols-3 gap-4 items-end">
+              <form onSubmit={handleSendInvitation} className="grid gap-4 md:grid-cols-3 md:items-end">
                 <div className="space-y-2">
                   <Label htmlFor="name">Nombre del amigo</Label>
                   <Input 
@@ -256,7 +274,7 @@ export default function FriendsPage() {
                     className="bg-white"
                   />
                 </div>
-                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Enviando...' : 'Enviar invitación'}</Button>
+                <Button type="submit" disabled={isSubmitting} className="w-full md:w-auto">{isSubmitting ? 'Enviando...' : 'Enviar invitación'}</Button>
               </form>
             </CardContent>
           </Card>
@@ -276,16 +294,16 @@ export default function FriendsPage() {
           {filteredFriends.length > 0 ? (
             filteredFriends.map(friend => (
               <Card key={friend.id} className="hover:shadow-md transition-all group overflow-hidden">
-                <CardContent className="p-4 flex items-center gap-4">
+                <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
                   <Avatar className="w-14 h-14 ring-2 ring-transparent group-hover:ring-primary/20 transition-all">
                     <AvatarImage src={friend.avatar} alt={friend.name} />
                     <AvatarFallback>{friend.name.charAt(0)}</AvatarFallback>
                   </Avatar>
-                  <div className="flex-1">
-                    <h3 className="font-bold text-lg">{friend.name}</h3>
-                    <div className="flex items-center gap-1.5 text-muted-foreground text-sm">
+                  <div className="min-w-0 flex-1">
+                    <h3 className="break-words font-bold text-lg">{friend.name}</h3>
+                    <div className="flex items-start gap-1.5 text-sm text-muted-foreground">
                       <Mail className="w-3.5 h-3.5" />
-                      <span>{friend.email}</span>
+                      <span className="break-all">{friend.email}</span>
                     </div>
                   </div>
 
@@ -294,7 +312,7 @@ export default function FriendsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="text-destructive"
+                        className="h-10 w-full text-destructive sm:w-10"
                         disabled={deletingFriendId === friend.id}
                         aria-label={`Eliminar a ${friend.name}`}
                       >
@@ -340,13 +358,13 @@ export default function FriendsPage() {
                   <CardContent className="p-4">
                     <div className="mb-4">
                       <h3 className="font-bold text-lg">{invitation.inviterName}</h3>
-                      <div className="flex items-center gap-1.5 text-muted-foreground text-sm">
+                      <div className="flex items-start gap-1.5 text-sm text-muted-foreground">
                         <Mail className="w-3.5 h-3.5" />
-                        <span>{invitation.inviterEmail}</span>
+                        <span className="break-all">{invitation.inviterEmail}</span>
                       </div>
                     </div>
                     <p className="text-sm text-muted-foreground mb-4">Te ha enviado una invitación de amistad</p>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col gap-2 sm:flex-row">
                       <Button
                         onClick={() => handleAcceptInvitation(invitation.id, invitation.inviterName)}
                         disabled={acceptingInvitationId === invitation.id}
@@ -379,9 +397,9 @@ export default function FriendsPage() {
                   <CardContent className="p-4">
                     <div className="mb-4">
                       <h3 className="font-bold text-lg">Esperando respuesta</h3>
-                      <div className="flex items-center gap-1.5 text-muted-foreground text-sm">
+                      <div className="flex items-start gap-1.5 text-sm text-muted-foreground">
                         <Mail className="w-3.5 h-3.5" />
-                        <span>{invitation.toEmail}</span>
+                        <span className="break-all">{invitation.toEmail}</span>
                       </div>
                     </div>
                     <p className="text-sm text-muted-foreground mb-4">Enviaste una invitación a este correo el {invitation.createdAt ? new Date(invitation.createdAt).toLocaleDateString('es-ES') : 'hace poco'}</p>

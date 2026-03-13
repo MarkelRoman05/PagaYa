@@ -11,14 +11,14 @@ export default function Home() {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <main className="flex-1 flex flex-col">
-        <section className="container mx-auto px-6 py-12 md:py-24 flex flex-col items-center text-center">
+        <section className="container mx-auto flex max-w-6xl flex-col items-center px-4 py-12 text-center sm:px-6 md:py-24">
           <div className="w-20 h-20 bg-primary/10 rounded-2xl flex items-center justify-center text-primary mb-8 animate-in fade-in zoom-in duration-700">
             <Wallet className="w-12 h-12" />
           </div>
-          <h1 className="text-4xl md:text-6xl font-bold text-foreground mb-6 font-headline tracking-tight">
+          <h1 className="mb-6 text-4xl font-bold tracking-tight text-foreground font-headline sm:text-5xl md:text-6xl">
             Paga<span className="text-primary">Ya</span>
           </h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mb-10">
+          <p className="mb-10 max-w-2xl text-base text-muted-foreground sm:text-xl">
             La forma más sencilla y elegante de gestionar deudas con tus amigos. Olvida los líos de dinero y disfruta de tus planes.
           </p>
           <div className="flex flex-col sm:flex-row gap-4">
@@ -35,8 +35,8 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="bg-white py-20 border-y border-border">
-          <div className="container mx-auto px-6">
+        <section className="border-y border-border bg-white py-16 sm:py-20">
+          <div className="container mx-auto max-w-6xl px-4 sm:px-6">
             <div className="grid md:grid-cols-3 gap-12">
               <div className="flex flex-col items-center text-center">
                 <div className="w-14 h-14 bg-primary/5 rounded-full flex items-center justify-center text-primary mb-4">

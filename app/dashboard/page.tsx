@@ -8,13 +8,15 @@ import { DebtCard } from '@/components/debts/DebtCard';
 import { NewDebtDialog } from '@/components/debts/NewDebtSheet';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { ArrowUpRight, ArrowDownLeft, Plus, Wallet } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Plus, RefreshCw, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/utils';
+import { useToast } from '@/hooks/use-toast';
 
 export default function Dashboard() {
   const [isNewDebtOpen, setIsNewDebtOpen] = useState(false);
-  const { friends, debts, markAsPaid, removeDebt, isReady, isLoadingData, user } = usePagaYa();
+  const { friends, debts, markAsPaid, rejectDebtPaymentRequest, removeDebt, isReady, isLoadingData, refreshData, user } = usePagaYa();
+  const { toast } = useToast();
 
   const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
   const fullName = typeof userMetadata.full_name === 'string' ? userMetadata.full_name.trim() : '';
@@ -27,21 +29,33 @@ export default function Dashboard() {
   const totalOwedToMe = owedToMe.reduce((acc, d) => acc + d.amount, 0);
   const totalOwedByMe = owedByMe.reduce((acc, d) => acc + d.amount, 0);
 
+  const handleRefresh = async () => {
+    try {
+      await refreshData();
+    } catch (error) {
+      toast({
+        title: 'No se pudo recargar la actividad',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (!isReady) return null;
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-background pb-20 md:pt-20">
+      <div className="min-h-screen bg-background pb-24 md:pb-20 md:pt-20">
         <Navbar />
         
-        <main className="container mx-auto px-4 py-8">
-        <header className="flex justify-between items-center mb-8">
+        <main className="container mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
+        <header className="mb-8 flex flex-col gap-4 sm:gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">¡Hola, {firstName}!</h1>
-            <p className="text-muted-foreground">Esto es lo que debes y lo que te deben. Págalo cuanto antes, que si no tu amigo se enfadará.</p>
+            <h1 className="text-2xl font-bold text-foreground sm:text-3xl">¡Hola, {firstName}!</h1>
+            <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">Esto es lo que debes y lo que te deben. Págalo cuanto antes, que si no tu amigo se enfadará.</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Button onClick={() => setIsNewDebtOpen(true)} className="rounded-full shadow-lg">
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            <Button onClick={() => setIsNewDebtOpen(true)} className="h-11 w-full rounded-full shadow-lg sm:w-auto">
               <Plus className="w-5 h-5 mr-2" />
               Nueva deuda
             </Button>
@@ -54,10 +68,10 @@ export default function Dashboard() {
           </div>
         )}
 
-        <section className="grid md:grid-cols-2 gap-4 mb-8">
+        <section className="mb-8 grid gap-4 md:grid-cols-2">
           <Card className="bg-primary text-white overflow-hidden relative">
             <div className="absolute right-[-10%] top-[-10%] opacity-10">
-              <ArrowDownLeft className="w-32 h-32" />
+              <ArrowDownLeft className="h-24 w-24 sm:h-32 sm:w-32" />
             </div>
             <CardHeader className="pb-2">
               <CardTitle className="text-primary-foreground/80 text-sm font-medium uppercase tracking-wider flex items-center gap-2">
@@ -66,14 +80,14 @@ export default function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-4xl font-bold">{formatCurrency(totalOwedToMe)}</div>
+              <div className="break-words text-3xl font-bold sm:text-4xl">{formatCurrency(totalOwedToMe)}</div>
               <p className="text-primary-foreground/70 text-sm mt-1">{owedToMe.length} deuda(s) pendiente(s)</p>
             </CardContent>
           </Card>
 
           <Card className="bg-white border-border overflow-hidden relative">
              <div className="absolute right-[-10%] top-[-10%] opacity-5">
-              <ArrowUpRight className="w-32 h-32 text-orange-600" />
+              <ArrowUpRight className="h-24 w-24 text-orange-600 sm:h-32 sm:w-32" />
             </div>
             <CardHeader className="pb-2">
               <CardTitle className="text-muted-foreground text-sm font-medium uppercase tracking-wider flex items-center gap-2">
@@ -82,7 +96,7 @@ export default function Dashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-4xl font-bold text-foreground">{formatCurrency(totalOwedByMe)}</div>
+              <div className="break-words text-3xl font-bold text-foreground sm:text-4xl">{formatCurrency(totalOwedByMe)}</div>
               <p className="text-muted-foreground text-sm mt-1">{owedByMe.length} deuda(s) pendiente(s)</p>
             </CardContent>
           </Card>
@@ -90,13 +104,21 @@ export default function Dashboard() {
 
         <section>
           <Tabs defaultValue="all" className="w-full">
-            <div className="flex justify-between items-center mb-4">
+            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <h2 className="text-xl font-bold">Actividad</h2>
-              <TabsList className="bg-white/50 border">
-                <TabsTrigger value="all">Todas</TabsTrigger>
-                <TabsTrigger value="to-me">Me deben</TabsTrigger>
-                <TabsTrigger value="by-me">Debo</TabsTrigger>
-              </TabsList>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
+                <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoadingData} className="w-full sm:w-auto">
+                  <RefreshCw className={isLoadingData ? 'animate-spin' : ''} />
+                  Recargar
+                </Button>
+                <div className="overflow-x-auto pb-1">
+                  <TabsList className="inline-flex h-auto min-w-full justify-start gap-1 border bg-white/50 p-1 sm:min-w-0">
+                    <TabsTrigger value="all" className="shrink-0">Todas</TabsTrigger>
+                    <TabsTrigger value="to-me" className="shrink-0">Me deben</TabsTrigger>
+                    <TabsTrigger value="by-me" className="shrink-0">Debo</TabsTrigger>
+                  </TabsList>
+                </div>
+              </div>
             </div>
 
             <TabsContent value="all" className="grid gap-4">
@@ -107,6 +129,7 @@ export default function Dashboard() {
                     debt={debt} 
                     friend={friends.find(f => f.id === debt.friendId)} 
                     onPaid={markAsPaid}
+                    onRejectPaymentRequest={rejectDebtPaymentRequest}
                     onDelete={removeDebt}
                   />
                 ))
@@ -123,6 +146,7 @@ export default function Dashboard() {
                     debt={debt} 
                     friend={friends.find(f => f.id === debt.friendId)} 
                     onPaid={markAsPaid}
+                    onRejectPaymentRequest={rejectDebtPaymentRequest}
                     onDelete={removeDebt}
                   />
                 ))
@@ -139,6 +163,7 @@ export default function Dashboard() {
                     debt={debt} 
                     friend={friends.find(f => f.id === debt.friendId)} 
                     onPaid={markAsPaid}
+                    onRejectPaymentRequest={rejectDebtPaymentRequest}
                     onDelete={removeDebt}
                   />
                 ))
@@ -159,7 +184,7 @@ export default function Dashboard() {
 function EmptyState({ onOpenDebt }: { onOpenDebt: () => void }) {
   return (
     <>
-      <div className="text-center py-20 bg-white/50 rounded-2xl border border-dashed flex flex-col items-center">
+      <div className="flex flex-col items-center rounded-2xl border border-dashed bg-white/50 px-4 py-16 text-center sm:py-20">
         <Wallet className="w-12 h-12 text-muted-foreground/30 mb-4" />
         <h3 className="text-lg font-medium text-muted-foreground">No hay deudas pendientes</h3>
         <p className="text-sm text-muted-foreground/70">Todo está al día. Relájate y disfuta.</p>

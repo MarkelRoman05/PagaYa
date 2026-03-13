@@ -113,7 +113,7 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md flex flex-col max-h-[90vh] overflow-hidden">
+      <DialogContent className="flex max-h-[90vh] w-[calc(100%-1.5rem)] max-w-md flex-col overflow-hidden p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle>Nueva deuda</DialogTitle>
           <DialogDescription>
@@ -127,7 +127,7 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-6 flex-1 overflow-y-auto pr-4">
+        <form onSubmit={handleSubmit} className="flex-1 space-y-6 overflow-y-auto pr-1 sm:pr-2">
           <div className="space-y-3">
             <Label>¿Quién debe el dinero?</Label>
             <RadioGroup
@@ -135,7 +135,7 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
               onValueChange={(val) =>
                 setFormData({ ...formData, type: val as any })
               }
-              className="grid grid-cols-2 gap-3"
+              className="grid gap-3 sm:grid-cols-2"
             >
               <Label
                 htmlFor="type-me"
