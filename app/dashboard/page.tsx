@@ -63,7 +63,7 @@ export default function Dashboard() {
         </header>
 
         {isLoadingData && (
-          <div className="mb-6 rounded-xl border bg-white px-4 py-3 text-sm text-muted-foreground">
+          <div className="mb-6 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground">
             Sincronizando tus datos con Supabase...
           </div>
         )}
@@ -85,7 +85,7 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
-          <Card className="bg-white border-border overflow-hidden relative">
+          <Card className="bg-card border-border overflow-hidden relative">
              <div className="absolute right-[-10%] top-[-10%] opacity-5">
               <ArrowUpRight className="h-24 w-24 text-orange-600 sm:h-32 sm:w-32" />
             </div>
@@ -112,7 +112,7 @@ export default function Dashboard() {
                   Recargar
                 </Button>
                 <div className="overflow-x-auto pb-1">
-                  <TabsList className="inline-flex h-auto min-w-full justify-start gap-1 border bg-white/50 p-1 sm:min-w-0">
+                  <TabsList className="inline-flex h-auto min-w-full justify-start gap-1 border bg-background/50 p-1 sm:min-w-0">
                     <TabsTrigger value="all" className="shrink-0">Todas</TabsTrigger>
                     <TabsTrigger value="to-me" className="shrink-0">Me deben</TabsTrigger>
                     <TabsTrigger value="by-me" className="shrink-0">Debo</TabsTrigger>
@@ -184,7 +184,7 @@ export default function Dashboard() {
 function EmptyState({ onOpenDebt }: { onOpenDebt: () => void }) {
   return (
     <>
-      <div className="flex flex-col items-center rounded-2xl border border-dashed bg-white/50 px-4 py-16 text-center sm:py-20">
+      <div className="flex flex-col items-center rounded-2xl border border-dashed bg-card/50 px-4 py-16 text-center sm:py-20">
         <Wallet className="w-12 h-12 text-muted-foreground/30 mb-4" />
         <h3 className="text-lg font-medium text-muted-foreground">No hay deudas pendientes</h3>
         <p className="text-sm text-muted-foreground/70">Todo está al día. Relájate y disfuta.</p>

@@ -122,7 +122,7 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
         </DialogHeader>
 
         {isLoadingData && (
-          <div className="rounded-lg border bg-white px-3 py-2 text-xs text-muted-foreground">
+          <div className="rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">
             Cargando tus contactos disponibles...
           </div>
         )}

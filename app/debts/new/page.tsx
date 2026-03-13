@@ -124,7 +124,7 @@ export default function NewDebt() {
           </div>
 
           {isLoadingData && (
-            <div className="mb-6 rounded-xl border bg-white px-4 py-3 text-sm text-muted-foreground">
+            <div className="mb-6 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground">
               Cargando tus contactos disponibles...
             </div>
           )}

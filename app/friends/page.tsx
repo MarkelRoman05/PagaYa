@@ -244,7 +244,7 @@ export default function FriendsPage() {
         </header>
 
         {isLoadingData && (
-          <div className="mb-6 rounded-xl border bg-white px-4 py-3 text-sm text-muted-foreground">
+          <div className="mb-6 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground">
             Actualizando tu agenda de amigos...
           </div>
         )}
@@ -260,7 +260,7 @@ export default function FriendsPage() {
                     placeholder="Ej: Juan Pérez" 
                     value={newInvitation.name}
                     onChange={(e) => setNewInvitation({ ...newInvitation, name: e.target.value })}
-                    className="bg-white"
+                    className="bg-background"
                   />
                 </div>
                 <div className="space-y-2">
@@ -271,7 +271,7 @@ export default function FriendsPage() {
                     placeholder="juan@ejemplo.com" 
                     value={newInvitation.email}
                     onChange={(e) => setNewInvitation({ ...newInvitation, email: e.target.value })}
-                    className="bg-white"
+                    className="bg-background"
                   />
                 </div>
                 <Button type="submit" disabled={isSubmitting} className="w-full md:w-auto">{isSubmitting ? 'Enviando...' : 'Enviar invitación'}</Button>
@@ -284,7 +284,7 @@ export default function FriendsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
           <Input 
             placeholder="Buscar por nombre o email..." 
-            className="pl-10 h-12 rounded-xl bg-white"
+            className="pl-10 h-12 rounded-xl bg-background"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -393,7 +393,7 @@ export default function FriendsPage() {
             <h2 className="text-2xl font-bold mb-4">Invitaciones Enviadas</h2>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
               {sentInvitations.map((invitation) => (
-                <Card key={invitation.id} className="border-amber-200 bg-amber-50">
+                <Card key={invitation.id} className="border-amber-500/30 bg-amber-500/10">
                   <CardContent className="p-4">
                     <div className="mb-4">
                       <h3 className="font-bold text-lg">Esperando respuesta</h3>
@@ -407,7 +407,7 @@ export default function FriendsPage() {
                       onClick={() => handleCancelInvitation(invitation.id)}
                       disabled={cancelingInvitationId === invitation.id}
                       variant="outline"
-                      className="w-full text-amber-700 border-amber-300 hover:bg-amber-100"
+                      className="w-full text-amber-700 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
                     >
                       {cancelingInvitationId === invitation.id ? 'Cancelando...' : 'Cancelar'}
                     </Button>

@@ -1,6 +1,7 @@
 export type DebtStatus = 'pending' | 'payment_requested' | 'paid';
 export type DebtType = 'owed_to_me' | 'owed_by_me';
 export type InvitationStatus = 'pending' | 'accepted' | 'rejected';
+export type Theme = 'light' | 'dark';
 
 export interface Friend {
   id: string;

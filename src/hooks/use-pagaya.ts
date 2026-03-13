@@ -2,7 +2,7 @@
 
 import { ReactNode, createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
-import { AppState, AuthCredentials, Debt, DebtStatus, DebtType, Friend, FriendInvitation, InvitationStatus } from '@/lib/types';
+import { AppState, AuthCredentials, Debt, DebtStatus, DebtType, Friend, FriendInvitation, InvitationStatus, Theme } from '@/lib/types';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase';
 
 type AddFriendInput = Pick<Friend, 'name' | 'email' | 'avatar'>;
@@ -77,6 +77,8 @@ interface PagaYaContextValue extends AppState {
   isLoadingData: boolean;
   session: Session | null;
   user: User | null;
+  theme: Theme;
+  setTheme: (theme: Theme) => Promise<void>;
   signIn: (credentials: AuthCredentials) => Promise<void>;
   signUp: (credentials: AuthCredentials) => Promise<void>;
   signOut: () => Promise<void>;
@@ -176,8 +178,19 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isLoadingData, setIsLoadingData] = useState(false);
+  const [theme, setThemeState] = useState<Theme>('light');
   const configured = useMemo(() => isSupabaseConfigured(), []);
   const pendingRealtimeRefreshRef = useRef<number | null>(null);
+
+  // Apply theme class to <html> whenever theme changes
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+  }, [theme]);
 
   const refreshData = useCallback(async (options?: RefreshDataOptions) => {
     const { supabase, user: activeUser } = await ensureAuthenticatedUser();
@@ -191,11 +204,13 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       const [
         { data: friendsData, error: friendsError },
         { data: invitationsData, error: invitationsError },
-        { data: debtsData, error: debtsError }
+        { data: debtsData, error: debtsError },
+        { data: settingsData },
       ] = await Promise.all([
         supabase.from('friends').select('*').eq('user_id', activeUser.id).order('created_at', { ascending: false }),
         supabase.from('friend_invitations').select('*').or(`from_user_id.eq.${activeUser.id},to_user_id.eq.${activeUser.id},to_email.eq.${activeUser.email}`).order('created_at', { ascending: false }),
         supabase.from('debts').select('*').or(`user_id.eq.${activeUser.id},other_user_id.eq.${activeUser.id}`).order('created_at', { ascending: false }),
+        supabase.from('user_settings').select('theme').eq('user_id', activeUser.id).maybeSingle(),
       ]);
 
       if (friendsError) {
@@ -237,6 +252,11 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         invitations: mappedInvitations,
         debts: mappedDebts,
       });
+
+      // Apply stored theme (only on first load, not on silent refresh polling)
+      if (!silent && settingsData && typeof settingsData.theme === 'string') {
+        setThemeState(settingsData.theme as Theme);
+      }
     } finally {
       if (!silent) {
         setIsLoadingData(false);
@@ -750,6 +770,20 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  const setTheme = async (newTheme: Theme) => {
+    const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+
+    const { error } = await supabase
+      .from('user_settings')
+      .upsert({ user_id: activeUser.id, theme: newTheme, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo guardar la preferencia de tema.'));
+    }
+
+    setThemeState(newTheme);
+  };
+
   const updateUserProfile = async ({ fullName, avatarFile }: UpdateProfileInput) => {
     const { supabase, user: activeUser } = await ensureAuthenticatedUser();
 
@@ -836,6 +870,8 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         isLoadingData,
         session,
         user,
+        theme,
+        setTheme,
         signIn,
         signUp,
         signOut,

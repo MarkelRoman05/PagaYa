@@ -53,7 +53,7 @@ export default function HistoryPage() {
         </header>
 
         {isLoadingData && (
-          <div className="mb-6 rounded-xl border bg-white px-4 py-3 text-sm text-muted-foreground">
+          <div className="mb-6 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground">
             Sincronizando tu historial...
           </div>
         )}
@@ -62,7 +62,7 @@ export default function HistoryPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
           <Input 
             placeholder="Buscar por descripción o amigo..." 
-            className="pl-10 h-12 rounded-xl bg-white"
+            className="pl-10 h-12 rounded-xl bg-background"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -80,7 +80,7 @@ export default function HistoryPage() {
               />
             ))
           ) : (
-            <div className="flex flex-col items-center rounded-2xl border border-dashed bg-white/50 px-4 py-16 text-center sm:py-20">
+            <div className="flex flex-col items-center rounded-2xl border border-dashed bg-card/50 px-4 py-16 text-center sm:py-20">
               <History className="w-12 h-12 text-muted-foreground/30 mb-4" />
               <h3 className="text-lg font-medium text-muted-foreground">No hay historial</h3>
               <p className="text-sm text-muted-foreground/70">Tus pagos completados aparecerán aquí.</p>

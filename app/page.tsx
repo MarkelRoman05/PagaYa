@@ -35,7 +35,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="border-y border-border bg-white py-16 sm:py-20">
+        <section className="border-y border-border bg-card py-16 sm:py-20">
           <div className="container mx-auto max-w-6xl px-4 sm:px-6">
             <div className="grid md:grid-cols-3 gap-12">
               <div className="flex flex-col items-center text-center">

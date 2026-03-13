@@ -25,7 +25,7 @@ export function Navbar() {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85 md:top-0 md:bottom-auto md:h-16 md:border-b md:border-t-0">
+    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85 md:top-0 md:bottom-auto md:h-16 md:border-b md:border-t-0">
       <div className="container mx-auto flex h-full max-w-6xl items-center justify-between px-2 sm:px-4">
         <div className="hidden md:flex items-center gap-2 font-bold text-primary text-xl">
           <Image

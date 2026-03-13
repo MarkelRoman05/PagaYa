@@ -5,7 +5,7 @@ import { Debt, Friend } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, Trash2, Clock, User, Euro, XCircle } from 'lucide-react';
+import { CheckCircle2, Trash2, Clock, User, Euro, XCircle, PenLine } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { usePagaYa } from '@/hooks/use-pagaya';
@@ -181,21 +181,25 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
                   {isOwedToMe ? "Me deben" : "Debo"}
                 </Badge>
                 {isPaymentRequested && (
-                  <Badge variant="outline" className="text-[10px] uppercase font-bold text-amber-700 border-amber-600 bg-amber-50">
+                  <Badge variant="outline" className="text-[10px] uppercase font-bold text-amber-700 dark:text-amber-400 border-amber-600/50 bg-amber-500/10">
                     Por confirmar
                   </Badge>
                 )}
                 {hasRejectedPaymentRequest && (
-                  <Badge variant="outline" className="text-[10px] uppercase font-bold text-rose-700 border-rose-600 bg-rose-50">
+                  <Badge variant="outline" className="text-[10px] uppercase font-bold text-rose-700 dark:text-rose-400 border-rose-600/50 bg-rose-500/10">
                     {rejectionBadgeLabel}
                   </Badge>
                 )}
-                {isPaid && <Badge variant="outline" className="text-[10px] uppercase font-bold text-teal-600 border-teal-600 bg-teal-50">Pagado</Badge>}
+                {isPaid && <Badge variant="outline" className="text-[10px] uppercase font-bold text-teal-600 dark:text-teal-400 border-teal-600/50 bg-teal-500/10">Pagado</Badge>}
               </div>
               <h3 className="break-words font-semibold text-base sm:text-lg">{debt.description}</h3>
               <div className="mt-1 flex items-start gap-1.5 text-sm text-muted-foreground">
                 <User className="w-3.5 h-3.5" />
-                <span className="break-words">Deuda con: {friend?.name || 'Amigo desconocido'}</span>
+                <span className="break-words">Deuda con {friend?.name || 'Amigo desconocido'}</span>
+              </div>
+              <div className="mt-0.5 flex items-start gap-1.5 text-xs text-muted-foreground/70">
+                <PenLine className="w-3 h-3 mt-0.5 shrink-0" />
+                <span>Creada por {debt.userId === user?.id ? 'ti' : (friend?.name || 'tu amigo')}</span>
               </div>
             </div>
             <div className="w-full text-left sm:w-auto sm:max-w-[220px] sm:text-right">
@@ -211,7 +215,7 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
                 <span className="break-words">{formattedDateTime}</span>
               </div>
               {isPaid && formattedPaidDateTime && (
-                <div className="mt-1 flex items-center gap-1 text-[12px] font-medium text-teal-700 sm:justify-end">
+                <div className="mt-1 flex items-center gap-1 text-[12px] font-medium text-teal-600 dark:text-teal-400 sm:justify-end">
                   <Euro className="w-3.5 h-3.5" aria-hidden="true" />
                   <span className="break-words">CONFIRMADO EL PAGO EL {formattedPaidDateTime}</span>
                 </div>
@@ -222,13 +226,13 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
           {!isPaid && (
             <div className="mt-4 flex flex-col gap-2 border-t border-muted pt-4 sm:flex-row">
               {canReviewPaymentRequest ? (
-                <div className="flex-1 rounded-xl border border-amber-200 bg-amber-50/70 p-3">
-                  <p className="text-sm font-medium text-amber-800">Solicitado por {requesterName}</p>
+                <div className="flex-1 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                  <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Solicitado por {requesterName}</p>
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex-1 text-teal-600 border-teal-200 hover:bg-teal-50 hover:text-teal-700"
+                      className="flex-1 text-teal-600 dark:text-teal-400 border-teal-500/30 hover:bg-teal-500/10 hover:text-teal-700 dark:hover:text-teal-300"
                       onClick={handleMarkAsPaid}
                       disabled={isUpdatingStatus || isRejectingPaymentRequest || isDeleting}
                     >
@@ -238,7 +242,7 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex-1 text-rose-600 border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                      className="flex-1 text-rose-600 dark:text-rose-400 border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-700 dark:hover:text-rose-300"
                       onClick={handleRejectPaymentRequest}
                       disabled={isUpdatingStatus || isRejectingPaymentRequest || isDeleting || !onRejectPaymentRequest}
                     >
@@ -250,15 +254,15 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
               ) : (
                 <div className="flex-1 space-y-2">
                   {hasRejectedPaymentRequest && (
-                    <div className="rounded-xl border border-rose-200 bg-rose-50/80 px-3 py-2">
-                      <p className="text-sm font-medium text-rose-800">{rejectionMessage}</p>
-                      <p className="text-xs text-rose-700/80 mt-1">Puedes volver a solicitar el pago cuando quieras.</p>
+                    <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2">
+                      <p className="text-sm font-medium text-rose-700 dark:text-rose-400">{rejectionMessage}</p>
+                      <p className="text-xs text-rose-600/80 dark:text-rose-400/70 mt-1">Puedes volver a solicitar el pago cuando quieras.</p>
                     </div>
                   )}
                   <Button
                     variant="outline"
                     size="sm"
-                    className="w-full text-teal-600 border-teal-200 hover:bg-teal-50 hover:text-teal-700"
+                    className="w-full text-teal-600 dark:text-teal-400 border-teal-500/30 hover:bg-teal-500/10 hover:text-teal-700 dark:hover:text-teal-300"
                     onClick={handleMarkAsPaid}
                     disabled={isUpdatingStatus || isRejectingPaymentRequest || isDeleting || (!canRequestConfirmation && !canConfirmPaymentDirectly)}
                   >

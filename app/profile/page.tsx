@@ -9,11 +9,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { LogOut } from 'lucide-react';
+import { LogOut, Moon, Sun } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import type { Theme } from '@/lib/types';
 
 export default function ProfilePage() {
-  const { user, isReady, signOut, updateUserProfile, updatePassword } = usePagaYa();
+  const { user, isReady, signOut, updateUserProfile, updatePassword, theme, setTheme } = usePagaYa();
   const { toast } = useToast();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [fullName, setFullName] = useState('');
@@ -24,6 +25,7 @@ export default function ProfilePage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
+  const [isSubmittingTheme, setIsSubmittingTheme] = useState(false);
 
   const userMetadata = useMemo(() => (user?.user_metadata ?? {}) as Record<string, unknown>, [user]);
 
@@ -154,6 +156,25 @@ export default function ProfilePage() {
     }
   };
 
+  const handleThemeChange = async (newTheme: Theme) => {
+    setIsSubmittingTheme(true);
+    try {
+      await setTheme(newTheme);
+      toast({
+        title: 'Apariencia actualizada',
+        description: newTheme === 'dark' ? 'Modo oscuro activado.' : 'Modo claro activado.',
+      });
+    } catch (error) {
+      toast({
+        title: 'No se pudo guardar la apariencia',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmittingTheme(false);
+    }
+  };
+
   const handleSignOut = async () => {
     setIsLoggingOut(true);
     try {
@@ -245,6 +266,39 @@ export default function ProfilePage() {
                     {isSubmittingProfile ? 'Guardando...' : 'Guardar cambios'}
                   </Button>
                 </form>
+              </CardContent>
+            </Card>
+
+            <Card className="lg:col-start-2">
+              <CardHeader>
+                <CardTitle>Apariencia</CardTitle>
+                <CardDescription>
+                  Elige entre modo claro u oscuro. Se guarda automáticamente en tu cuenta.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex gap-3">
+                  <Button
+                    type="button"
+                    variant={theme === 'light' ? 'default' : 'outline'}
+                    disabled={isSubmittingTheme}
+                    onClick={() => handleThemeChange('light')}
+                    className="flex items-center gap-2"
+                  >
+                    <Sun className="w-4 h-4" />
+                    Claro
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={theme === 'dark' ? 'default' : 'outline'}
+                    disabled={isSubmittingTheme}
+                    onClick={() => handleThemeChange('dark')}
+                    className="flex items-center gap-2"
+                  >
+                    <Moon className="w-4 h-4" />
+                    Oscuro
+                  </Button>
+                </div>
               </CardContent>
             </Card>
 
