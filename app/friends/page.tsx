@@ -28,7 +28,7 @@ export default function FriendsPage() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [isAdding, setIsAdding] = useState(false);
-  const [newInvitation, setNewInvitation] = useState({ name: '', email: '' });
+  const [newInvitation, setNewInvitation] = useState({ username: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingFriendId, setDeletingFriendId] = useState<string | null>(null);
   const [acceptingInvitationId, setAcceptingInvitationId] = useState<string | null>(null);
@@ -37,6 +37,7 @@ export default function FriendsPage() {
 
   const filteredFriends = friends.filter(f => 
     f.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    (f.username?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
     f.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -56,41 +57,39 @@ export default function FriendsPage() {
   const handleSendInvitation = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const name = newInvitation.name.trim();
-    const email = newInvitation.email.trim().toLowerCase();
-    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    const username = newInvitation.username.trim().toLowerCase();
 
-    if (!name || !email) {
+    if (!username) {
       toast({
-        title: 'Completa los campos',
-        description: 'Añade un nombre y un correo válido para enviar la invitación.',
+        title: 'Completa el campo',
+        description: 'Indica un nombre de usuario para enviar la invitación.',
         variant: 'destructive',
       });
       return;
     }
 
-    if (!isValidEmail) {
+    if (!/^[a-z0-9_]{3,24}$/.test(username)) {
       toast({
-        title: 'Correo no válido',
-        description: 'Introduce un email con un formato correcto.',
+        title: 'Nombre de usuario no válido',
+        description: 'Usa entre 3 y 24 caracteres: letras, números o guion bajo (_).',
         variant: 'destructive',
       });
       return;
     }
 
-    if (friends.some((friend) => friend.email.toLowerCase() === email)) {
+    if (friends.some((friend) => friend.username?.toLowerCase() === username)) {
       toast({
         title: 'Ya es amigo',
-        description: 'Ya existe una amistad con este email.',
+        description: 'Ya existe una amistad con este usuario.',
         variant: 'destructive',
       });
       return;
     }
 
-    if (invitations.some((inv) => inv.toEmail.toLowerCase() === email && inv.status === 'pending')) {
+    if (invitations.some((inv) => inv.toUserName?.toLowerCase() === username && inv.status === 'pending')) {
       toast({
         title: 'Invitación pendiente',
-        description: 'Ya has enviado una invitación a este email.',
+        description: 'Ya has enviado una invitación a este usuario.',
         variant: 'destructive',
       });
       return;
@@ -100,16 +99,15 @@ export default function FriendsPage() {
 
     try {
       await sendInvitation({
-        name,
-        email,
+        username,
       });
 
-      setNewInvitation({ name: '', email: '' });
+      setNewInvitation({ username: '' });
       setIsAdding(false);
 
       toast({
         title: 'Invitación enviada',
-        description: `Se ha enviado una invitación a ${email}.`,
+        description: `Se ha enviado una invitación a @${username}.`,
       });
     } catch (error) {
       toast({
@@ -252,29 +250,20 @@ export default function FriendsPage() {
         {isAdding && (
           <Card className="mb-8 border-primary/20 bg-primary/5">
             <CardContent className="p-6">
-              <form onSubmit={handleSendInvitation} className="grid gap-4 md:grid-cols-3 md:items-end">
+              <form onSubmit={handleSendInvitation} className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
                 <div className="space-y-2">
-                  <Label htmlFor="name">Nombre del amigo</Label>
+                  <Label htmlFor="username">Nombre de usuario del amigo</Label>
                   <Input 
-                    id="name" 
-                    placeholder="Ej: Juan Pérez" 
-                    value={newInvitation.name}
-                    onChange={(e) => setNewInvitation({ ...newInvitation, name: e.target.value })}
-                    className="bg-background"
+                    id="username"
+                    type="text"
+                    placeholder="Introduce el username de tu amigo"
+                    value={newInvitation.username}
+                    onChange={(e) => setNewInvitation({ ...newInvitation, username: e.target.value })}
+                    className="h-11 bg-background"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email del amigo</Label>
-                  <Input 
-                    id="email" 
-                    type="email" 
-                    placeholder="juan@ejemplo.com" 
-                    value={newInvitation.email}
-                    onChange={(e) => setNewInvitation({ ...newInvitation, email: e.target.value })}
-                    className="bg-background"
-                  />
-                </div>
-                <Button type="submit" disabled={isSubmitting} className="w-full md:w-auto">{isSubmitting ? 'Enviando...' : 'Enviar invitación'}</Button>
+                <Button type="submit" disabled={isSubmitting} className="h-11 w-full md:min-w-[220px] md:self-end">{isSubmitting ? 'Enviando...' : 'Enviar invitación'}</Button>
+                <p className="text-xs text-muted-foreground md:col-span-2">Busca a tus amigos por su usuario único.</p>
               </form>
             </CardContent>
           </Card>
@@ -283,7 +272,7 @@ export default function FriendsPage() {
         <div className="relative mb-6">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
           <Input 
-            placeholder="Buscar por nombre o email..." 
+            placeholder="Buscar por nombre, usuario o email..." 
             className="pl-10 h-12 rounded-xl bg-background"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -294,25 +283,25 @@ export default function FriendsPage() {
           {filteredFriends.length > 0 ? (
             filteredFriends.map(friend => (
               <Card key={friend.id} className="hover:shadow-md transition-all group overflow-hidden">
-                <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center">
-                  <Avatar className="w-14 h-14 ring-2 ring-transparent group-hover:ring-primary/20 transition-all">
+                <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start">
+                  <Avatar className="h-14 w-14 shrink-0 ring-2 ring-transparent transition-all group-hover:ring-primary/20">
                     <AvatarImage src={friend.avatar} alt={friend.name} />
                     <AvatarFallback>{friend.name.charAt(0)}</AvatarFallback>
                   </Avatar>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="break-words font-bold text-lg">{friend.name}</h3>
-                    <div className="flex items-start gap-1.5 text-sm text-muted-foreground">
-                      <Mail className="w-3.5 h-3.5" />
-                      <span className="break-all">{friend.email}</span>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <h3 className="truncate text-lg font-bold leading-tight">{friend.username ? `@${friend.username}` : friend.name}</h3>
+                    <div className="flex items-start gap-1.5 text-sm leading-tight text-muted-foreground">
+                      <Mail className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      <span className="min-w-0 break-words [overflow-wrap:anywhere]">{friend.email}</span>
                     </div>
                   </div>
 
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
                       <Button
-                        variant="ghost"
+                        variant="outline"
                         size="icon"
-                        className="h-10 w-full text-destructive sm:w-10"
+                        className="h-10 w-full self-start border-input text-muted-foreground hover:border-primary/50 hover:bg-primary/10 hover:text-primary sm:w-10"
                         disabled={deletingFriendId === friend.id}
                         aria-label={`Eliminar a ${friend.name}`}
                       >
@@ -357,7 +346,7 @@ export default function FriendsPage() {
                 <Card key={invitation.id} className="border-primary/20 bg-primary/5">
                   <CardContent className="p-4">
                     <div className="mb-4">
-                      <h3 className="font-bold text-lg">{invitation.inviterName}</h3>
+                      <h3 className="font-bold text-lg">{invitation.inviterUserName ? `@${invitation.inviterUserName}` : invitation.inviterName}</h3>
                       <div className="flex items-start gap-1.5 text-sm text-muted-foreground">
                         <Mail className="w-3.5 h-3.5" />
                         <span className="break-all">{invitation.inviterEmail}</span>
@@ -399,10 +388,10 @@ export default function FriendsPage() {
                       <h3 className="font-bold text-lg">Esperando respuesta</h3>
                       <div className="flex items-start gap-1.5 text-sm text-muted-foreground">
                         <Mail className="w-3.5 h-3.5" />
-                        <span className="break-all">{invitation.toEmail}</span>
+                        <span className="break-all">{invitation.toUserName ? `@${invitation.toUserName}` : invitation.toEmail}</span>
                       </div>
                     </div>
-                    <p className="text-sm text-muted-foreground mb-4">Enviaste una invitación a este correo el {invitation.createdAt ? new Date(invitation.createdAt).toLocaleDateString('es-ES') : 'hace poco'}</p>
+                    <p className="text-sm text-muted-foreground mb-4">Enviaste una invitación a este usuario el {invitation.createdAt ? new Date(invitation.createdAt).toLocaleDateString('es-ES') : 'hace poco'}</p>
                     <Button
                       onClick={() => handleCancelInvitation(invitation.id)}
                       disabled={cancelingInvitationId === invitation.id}

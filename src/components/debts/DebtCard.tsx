@@ -69,7 +69,7 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
       ? 'Solicitar marcar como pagado'
       : canConfirmPaymentDirectly
         ? 'Marcar como pagado'
-        : 'Esperando confirmación de tu amigo';
+        : 'Esperando confirmación de la otra persona';
 
   const handleMarkAsPaid = async () => {
     setIsUpdatingStatus(true);
@@ -81,6 +81,7 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
         description: canRequestConfirmation
           ? 'La otra persona debe confirmar que el pago se ha recibido.'
           : 'Has saldado esta deuda. ¡Bien hecho!',
+        variant: 'destructive',
       });
     } catch (error) {
       toast({
@@ -105,6 +106,7 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
       toast({
         title: 'Solicitud rechazada',
         description: 'La deuda ha vuelto a quedar pendiente.',
+        variant: 'destructive'
       });
     } catch (error) {
       toast({
@@ -134,6 +136,7 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
       toast({
         title: 'Deuda eliminada',
         description: 'El registro se ha borrado correctamente.',
+        variant: 'destructive'
       });
     } catch (error) {
       toast({
@@ -194,7 +197,7 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
               </div>
               <h3 className="break-words font-semibold text-base sm:text-lg">{debt.description}</h3>
               <div className="mt-1 flex items-start gap-1.5 text-sm text-muted-foreground">
-                <User className="w-3.5 h-3.5" />
+                <User className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                 <span className="break-words">Deuda con {friend?.name || 'Amigo desconocido'}</span>
               </div>
               <div className="mt-0.5 flex items-start gap-1.5 text-xs text-muted-foreground/70">
@@ -210,7 +213,7 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
                 {formatCurrency(debt.amount)}
               </span>
               <div className="mt-1 flex items-center gap-1 text-[12px] font-medium uppercase text-muted-foreground sm:justify-end">
-                <Clock className="w-3 h-3" />
+                <Clock className="w-3 h-3 shrink-0" />
                 <span>Creado el</span>
                 <span className="break-words">{formattedDateTime}</span>
               </div>
@@ -224,9 +227,16 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
           </div>
 
           {!isPaid && (
-            <div className="mt-4 flex flex-col gap-2 border-t border-muted pt-4 sm:flex-row">
+            <div
+              className={cn(
+                "mt-4 grid gap-2 border-t border-muted pt-4",
+                canDeleteDebt
+                  ? "grid-cols-[minmax(0,1fr)_auto] items-center"
+                  : "grid-cols-1"
+              )}
+            >
               {canReviewPaymentRequest ? (
-                <div className="flex-1 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
+                <div className="min-w-0 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3">
                   <p className="text-sm font-medium text-amber-700 dark:text-amber-400">Solicitado por {requesterName}</p>
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                     <Button
@@ -252,7 +262,7 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
                   </div>
                 </div>
               ) : (
-                <div className="flex-1 space-y-2">
+                <div className="min-w-0 space-y-2">
                   {hasRejectedPaymentRequest && (
                     <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2">
                       <p className="text-sm font-medium text-rose-700 dark:text-rose-400">{rejectionMessage}</p>
@@ -276,9 +286,9 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="icon"
-                      className="h-10 w-full shrink-0 text-destructive hover:bg-destructive/10 sm:w-10"
+                        className="h-9 w-9 shrink-0 self-end border-input text-muted-foreground hover:bg-primary/10 hover:text-primary hover:border-primary/50"
                       disabled={isUpdatingStatus || isRejectingPaymentRequest || isDeleting}
                       title="Eliminar deuda"
                     >

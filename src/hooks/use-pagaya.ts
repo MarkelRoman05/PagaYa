@@ -2,18 +2,17 @@
 
 import { ReactNode, createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
-import { AppState, AuthCredentials, Debt, DebtStatus, DebtType, Friend, FriendInvitation, InvitationStatus, Theme } from '@/lib/types';
+import { AppState, AuthCredentials, Debt, DebtStatus, DebtType, DeviceSession, Friend, FriendInvitation, InvitationStatus, RegisterCredentials, Theme } from '@/lib/types';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase';
 
 type AddFriendInput = Pick<Friend, 'name' | 'email' | 'avatar'>;
 type AddDebtInput = Pick<Debt, 'friendId' | 'amount' | 'description' | 'type'>;
 type UpdateProfileInput = {
-  fullName: string;
+  username: string;
   avatarFile: File | null;
 };
 type SendInvitationInput = {
-  email: string;
-  name: string;
+  username: string;
 };
 
 const AVATAR_BUCKET = 'avatars';
@@ -23,6 +22,7 @@ interface FriendRow {
   user_id: string;
   other_user_id: string;
   name: string;
+  username: string | null;
   email: string;
   avatar: string | null;
   created_at: string;
@@ -31,10 +31,12 @@ interface FriendRow {
 interface InvitationRow {
   id: string;
   from_user_id: string;
+  to_username: string | null;
   to_email: string;
   to_user_id: string | null;
   invited_name: string | null;
   inviter_name: string;
+  inviter_username: string | null;
   inviter_email: string;
   status: InvitationStatus;
   created_at: string;
@@ -57,10 +59,24 @@ interface DebtRow {
   payment_request_rejection_count: number | null;
 }
 
+interface DeviceSessionRow {
+  id: string;
+  user_id: string;
+  session_id: string;
+  device_label: string;
+  browser: string;
+  os: string;
+  user_agent: string | null;
+  signed_in_at: string;
+  last_seen_at: string;
+  revoked_at: string | null;
+}
+
 type RealtimeRow = {
   user_id?: string;
   other_user_id?: string | null;
   from_user_id?: string;
+  to_username?: string;
   to_user_id?: string | null;
   to_email?: string;
 };
@@ -77,12 +93,15 @@ interface PagaYaContextValue extends AppState {
   isLoadingData: boolean;
   session: Session | null;
   user: User | null;
+  deviceSessions: DeviceSession[];
+  currentSessionId: string | null;
   theme: Theme;
   setTheme: (theme: Theme) => Promise<void>;
   signIn: (credentials: AuthCredentials) => Promise<void>;
-  signUp: (credentials: AuthCredentials) => Promise<void>;
+  signUp: (credentials: RegisterCredentials) => Promise<void>;
   signOut: () => Promise<void>;
   refreshData: (options?: RefreshDataOptions) => Promise<void>;
+  refreshDeviceSessions: () => Promise<void>;
   sendInvitation: (invitation: SendInvitationInput) => Promise<FriendInvitation>;
   acceptInvitation: (invitationId: string) => Promise<Friend>;
   rejectInvitation: (invitationId: string) => Promise<void>;
@@ -109,6 +128,7 @@ function mapFriendRow(row: FriendRow): Friend {
     userId: row.user_id,
     otherUserId: row.other_user_id,
     name: row.name,
+    username: row.username ?? undefined,
     email: row.email,
     avatar: row.avatar ?? undefined,
     createdAt: row.created_at,
@@ -119,9 +139,11 @@ function mapInvitationRow(row: InvitationRow): FriendInvitation {
   return {
     id: row.id,
     fromUserId: row.from_user_id,
+    toUserName: row.to_username ?? undefined,
     toEmail: row.to_email,
     toUserId: row.to_user_id ?? undefined,
     inviterName: row.inviter_name,
+    inviterUserName: row.inviter_username ?? undefined,
     inviterEmail: row.inviter_email,
     status: row.status,
     createdAt: row.created_at,
@@ -143,6 +165,128 @@ function mapDebtRow(row: DebtRow): Debt {
     paymentRequestRejectedByUserId: row.payment_request_rejected_by ?? undefined,
     paymentRequestRejectionCount: row.payment_request_rejection_count ?? 0,
   };
+}
+
+function mapDeviceSessionRow(row: DeviceSessionRow): DeviceSession {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    sessionId: row.session_id,
+    deviceLabel: row.device_label,
+    browser: row.browser,
+    os: row.os,
+    userAgent: row.user_agent ?? undefined,
+    signedInAt: row.signed_in_at,
+    lastSeenAt: row.last_seen_at,
+    revokedAt: row.revoked_at ?? undefined,
+  };
+}
+
+function decodeJwtPayload(token: string) {
+  try {
+    const [, payload] = token.split('.');
+
+    if (!payload) {
+      return null;
+    }
+
+    const normalizedPayload = payload.replace(/-/g, '+').replace(/_/g, '/');
+    const paddedPayload = normalizedPayload.padEnd(Math.ceil(normalizedPayload.length / 4) * 4, '=');
+    const decodedPayload = atob(paddedPayload);
+
+    return JSON.parse(decodedPayload) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function getSessionIdentifier(session: Session | null) {
+  if (!session?.access_token) {
+    return null;
+  }
+
+  const payload = decodeJwtPayload(session.access_token);
+  const candidateKeys = ['session_id', 'sid', 'jti'] as const;
+
+  for (const key of candidateKeys) {
+    const value = payload?.[key];
+
+    if (typeof value === 'string' && value.trim()) {
+      return value;
+    }
+  }
+
+  if (typeof session.refresh_token === 'string' && session.refresh_token.trim()) {
+    return `${session.user.id}:${session.refresh_token.slice(0, 24)}`;
+  }
+
+  return null;
+}
+
+function getBrowserName(userAgent: string) {
+  const normalizedUserAgent = userAgent.toLowerCase();
+
+  if (normalizedUserAgent.includes('edg/')) {
+    return 'Microsoft Edge';
+  }
+
+  if (normalizedUserAgent.includes('opr/') || normalizedUserAgent.includes('opera')) {
+    return 'Opera';
+  }
+
+  if (normalizedUserAgent.includes('chrome/') && !normalizedUserAgent.includes('edg/')) {
+    return 'Chrome';
+  }
+
+  if (normalizedUserAgent.includes('firefox/')) {
+    return 'Firefox';
+  }
+
+  if (normalizedUserAgent.includes('safari/') && !normalizedUserAgent.includes('chrome/')) {
+    return 'Safari';
+  }
+
+  return 'Navegador';
+}
+
+function getOsName(userAgent: string) {
+  const normalizedUserAgent = userAgent.toLowerCase();
+
+  if (normalizedUserAgent.includes('android')) {
+    return 'Android';
+  }
+
+  if (normalizedUserAgent.includes('iphone') || normalizedUserAgent.includes('ipad') || normalizedUserAgent.includes('ios')) {
+    return 'iOS';
+  }
+
+  if (normalizedUserAgent.includes('mac os x') || normalizedUserAgent.includes('macintosh')) {
+    return 'macOS';
+  }
+
+  if (normalizedUserAgent.includes('windows')) {
+    return 'Windows';
+  }
+
+  if (normalizedUserAgent.includes('linux')) {
+    return 'Linux';
+  }
+
+  return 'Sistema desconocido';
+}
+
+function getDeviceLabel(browser: string, os: string, userAgent: string) {
+  const normalizedUserAgent = userAgent.toLowerCase();
+
+  if (normalizedUserAgent.includes('mobile') || normalizedUserAgent.includes('iphone') || normalizedUserAgent.includes('android')) {
+    return `Movil · ${browser}`;
+  }
+
+  if (normalizedUserAgent.includes('ipad') || normalizedUserAgent.includes('tablet')) {
+    return `Tablet · ${browser}`;
+  }
+
+  return `Ordenador · ${browser} en ${os}`;
 }
 
 function getFriendlyErrorMessage(error: unknown, fallback: string) {
@@ -176,11 +320,126 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
   const [isReady, setIsReady] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [deviceSessions, setDeviceSessions] = useState<DeviceSession[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isLoadingData, setIsLoadingData] = useState(false);
-  const [theme, setThemeState] = useState<Theme>('light');
+  const [theme, setThemeState] = useState<Theme>('dark');
   const configured = useMemo(() => isSupabaseConfigured(), []);
   const pendingRealtimeRefreshRef = useRef<number | null>(null);
+
+  const refreshDeviceSessions = useCallback(async () => {
+    const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+    const { data, error } = await supabase
+      .from('user_device_sessions')
+      .select('*')
+      .eq('user_id', activeUser.id)
+      .is('revoked_at', null)
+      .order('last_seen_at', { ascending: false });
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo cargar la lista de dispositivos.'));
+    }
+
+    setDeviceSessions((data ?? []).map((row) => mapDeviceSessionRow(row as DeviceSessionRow)));
+  }, []);
+
+  const syncCurrentDeviceSession = useCallback(async (activeSession: Session | null) => {
+    const supabase = getSupabaseBrowserClient();
+
+    if (!supabase || !activeSession?.user) {
+      setCurrentSessionId(null);
+      return;
+    }
+
+    const sessionId = getSessionIdentifier(activeSession);
+
+    if (!sessionId) {
+      setCurrentSessionId(null);
+      return;
+    }
+
+    setCurrentSessionId(sessionId);
+
+    const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+    const browser = getBrowserName(userAgent);
+    const os = getOsName(userAgent);
+    const deviceLabel = getDeviceLabel(browser, os, userAgent);
+    const now = new Date().toISOString();
+
+    const { data: existingSession, error: existingSessionError } = await supabase
+      .from('user_device_sessions')
+      .select('id')
+      .eq('user_id', activeSession.user.id)
+      .eq('session_id', sessionId)
+      .maybeSingle();
+
+    if (existingSessionError) {
+      throw new Error(getFriendlyErrorMessage(existingSessionError, 'No se pudo sincronizar el dispositivo actual.'));
+    }
+
+    if (existingSession) {
+      const { error: updateError } = await supabase
+        .from('user_device_sessions')
+        .update({
+          device_label: deviceLabel,
+          browser,
+          os,
+          user_agent: userAgent || null,
+          last_seen_at: now,
+          revoked_at: null,
+        })
+        .eq('id', existingSession.id);
+
+      if (updateError) {
+        throw new Error(getFriendlyErrorMessage(updateError, 'No se pudo actualizar la sesión del dispositivo.'));
+      }
+
+      return;
+    }
+
+    const { error: insertError } = await supabase.from('user_device_sessions').insert({
+      user_id: activeSession.user.id,
+      session_id: sessionId,
+      device_label: deviceLabel,
+      browser,
+      os,
+      user_agent: userAgent || null,
+      signed_in_at: now,
+      last_seen_at: now,
+    });
+
+    if (insertError) {
+      throw new Error(getFriendlyErrorMessage(insertError, 'No se pudo registrar la sesión del dispositivo.'));
+    }
+  }, []);
+
+  const markCurrentSessionAsRevoked = useCallback(async (activeSession: Session | null) => {
+    const supabase = getSupabaseBrowserClient();
+
+    if (!supabase || !activeSession?.user) {
+      return;
+    }
+
+    const sessionId = getSessionIdentifier(activeSession);
+
+    if (!sessionId) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('user_device_sessions')
+      .update({
+        revoked_at: new Date().toISOString(),
+        last_seen_at: new Date().toISOString(),
+      })
+      .eq('user_id', activeSession.user.id)
+      .eq('session_id', sessionId);
+
+    if (error) {
+      console.error('No se pudo marcar la sesión actual como cerrada', error);
+    }
+  }, []);
 
   // Apply theme class to <html> whenever theme changes
   useEffect(() => {
@@ -206,11 +465,13 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         { data: invitationsData, error: invitationsError },
         { data: debtsData, error: debtsError },
         { data: settingsData },
+        { data: devicesData, error: devicesError },
       ] = await Promise.all([
         supabase.from('friends').select('*').eq('user_id', activeUser.id).order('created_at', { ascending: false }),
         supabase.from('friend_invitations').select('*').or(`from_user_id.eq.${activeUser.id},to_user_id.eq.${activeUser.id},to_email.eq.${activeUser.email}`).order('created_at', { ascending: false }),
         supabase.from('debts').select('*').or(`user_id.eq.${activeUser.id},other_user_id.eq.${activeUser.id}`).order('created_at', { ascending: false }),
         supabase.from('user_settings').select('theme').eq('user_id', activeUser.id).maybeSingle(),
+        supabase.from('user_device_sessions').select('*').eq('user_id', activeUser.id).is('revoked_at', null).order('last_seen_at', { ascending: false }),
       ]);
 
       if (friendsError) {
@@ -223,6 +484,10 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
 
       if (debtsError) {
         throw debtsError;
+      }
+
+      if (devicesError) {
+        throw devicesError;
       }
 
       // Map invitations and filter only relevant ones
@@ -253,9 +518,15 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         debts: mappedDebts,
       });
 
+      setDeviceSessions((devicesData ?? []).map((row) => mapDeviceSessionRow(row as DeviceSessionRow)));
+
       // Apply stored theme (only on first load, not on silent refresh polling)
-      if (!silent && settingsData && typeof settingsData.theme === 'string') {
-        setThemeState(settingsData.theme as Theme);
+      if (!silent) {
+        if (settingsData && typeof settingsData.theme === 'string') {
+          setThemeState(settingsData.theme as Theme);
+        } else {
+          setThemeState('dark');
+        }
       }
     } finally {
       if (!silent) {
@@ -305,15 +576,18 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
 
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
+      setCurrentSessionId(getSessionIdentifier(currentSession));
 
       if (currentSession?.user) {
         try {
+          await syncCurrentDeviceSession(currentSession);
           await refreshData();
         } catch (error) {
           console.error('No se pudieron cargar los datos iniciales', error);
         }
       } else {
         setState(EMPTY_STATE);
+        setThemeState('dark');
       }
 
       setIsLoadingAuth(false);
@@ -327,24 +601,32 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
     } = supabase.auth.onAuthStateChange((_, nextSession) => {
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
+      setCurrentSessionId(getSessionIdentifier(nextSession));
 
       if (!nextSession?.user) {
         setState(EMPTY_STATE);
+        setDeviceSessions([]);
+        setThemeState('dark');
         setIsLoadingAuth(false);
         setIsReady(true);
         return;
       }
 
-      void refreshData().catch((error) => {
-        console.error('No se pudieron refrescar los datos del usuario', error);
-      });
+      void (async () => {
+        try {
+          await syncCurrentDeviceSession(nextSession);
+          await refreshData();
+        } catch (error) {
+          console.error('No se pudieron refrescar los datos del usuario', error);
+        }
+      })();
     });
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [configured, refreshData]);
+  }, [configured, refreshData, syncCurrentDeviceSession]);
 
   useEffect(() => {
     if (!configured || !user) {
@@ -396,6 +678,20 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       table: 'debts',
     }, scheduleRealtimeRefresh);
 
+    channel.on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'user_device_sessions',
+    }, (payload) => {
+      const nextRow = payload.new as RealtimeRow;
+      const prevRow = payload.old as RealtimeRow;
+      const ownerId = nextRow.user_id ?? prevRow.user_id;
+
+      if (ownerId === user.id) {
+        scheduleRealtimeRefresh();
+      }
+    });
+
     void channel.subscribe();
 
     return () => {
@@ -409,14 +705,19 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
   }, [configured, scheduleRealtimeRefresh, user]);
 
   useEffect(() => {
-    if (!configured || !user) {
+    if (!configured || !user || !session) {
       return;
     }
 
     const refreshSilently = () => {
-      void refreshData({ silent: true }).catch((error) => {
-        console.error('No se pudieron refrescar los datos de sincronizacion', error);
-      });
+      void (async () => {
+        try {
+          await syncCurrentDeviceSession(session);
+          await refreshData({ silent: true });
+        } catch (error) {
+          console.error('No se pudieron refrescar los datos de sincronizacion', error);
+        }
+      })();
     };
 
     const onFocus = () => {
@@ -443,7 +744,7 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       clearInterval(pollInterval);
     };
-  }, [configured, refreshData, user]);
+  }, [configured, refreshData, session, syncCurrentDeviceSession, user]);
 
   const signIn = async ({ email, password }: AuthCredentials) => {
     const supabase = getSupabaseBrowserClient();
@@ -459,17 +760,73 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signUp = async ({ email, password }: AuthCredentials) => {
+  const signUp = async ({ email, password, username }: RegisterCredentials) => {
     const supabase = getSupabaseBrowserClient();
 
     if (!supabase) {
       throw new Error('Faltan las variables NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.');
     }
 
-    const { error } = await supabase.auth.signUp({ email, password });
+    const normalizedUsername = username.trim().toLowerCase();
+
+    if (!/^[a-z0-9_]{3,24}$/.test(normalizedUsername)) {
+      throw new Error('El nombre de usuario debe tener entre 3 y 24 caracteres y solo puede incluir letras, números y guiones bajos.');
+    }
+
+    const { data: isAvailable, error: usernameCheckError } = await supabase.rpc('is_username_available', {
+      username_input: normalizedUsername,
+    });
+
+    if (usernameCheckError) {
+      throw new Error(getFriendlyErrorMessage(usernameCheckError, 'No se pudo validar el nombre de usuario.'));
+    }
+
+    if (!isAvailable) {
+      throw new Error('Este nombre de usuario ya está en uso. Elige otro distinto.');
+    }
+
+    const { data: signUpData, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          username: normalizedUsername,
+        },
+      },
+    });
 
     if (error) {
-      throw new Error(getFriendlyErrorMessage(error, 'No se pudo crear la cuenta.'));
+      const friendlyMessage = getFriendlyErrorMessage(error, 'No se pudo crear la cuenta.');
+      const normalizedMessage = friendlyMessage.toLowerCase();
+
+      if (normalizedMessage.includes('database error saving new user')) {
+        const { data: isStillAvailable, error: recheckError } = await supabase.rpc('is_username_available', {
+          username_input: normalizedUsername,
+        });
+
+        if (!recheckError && isStillAvailable === false) {
+          throw new Error('Este nombre de usuario ya está en uso. Elige otro distinto.');
+        }
+
+        throw new Error('No se pudo crear la cuenta porque la base de datos rechazó el registro. Aplica de nuevo el schema de Supabase y vuelve a intentarlo.');
+      }
+
+      if (normalizedMessage.includes('already registered')) {
+        throw new Error('Este email ya está registrado. Inicia sesión o recupera tu contraseña.');
+      }
+
+      throw new Error(friendlyMessage);
+    }
+
+    // If signup returns an active session, enforce username assignment via RPC as a second step.
+    if (signUpData?.session) {
+      const { error: updateUsernameError } = await supabase.rpc('update_my_username', {
+        username_input: normalizedUsername,
+      });
+
+      if (updateUsernameError) {
+        throw new Error(getFriendlyErrorMessage(updateUsernameError, 'La cuenta se creó, pero no se pudo terminar de guardar tu nombre de usuario.'));
+      }
     }
   };
 
@@ -480,44 +837,78 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const { error } = await supabase.auth.signOut();
+    await markCurrentSessionAsRevoked(session);
+
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
 
     if (error) {
       throw new Error(getFriendlyErrorMessage(error, 'No se pudo cerrar sesión.'));
     }
+
+    setDeviceSessions((currentState) => currentState.filter((deviceSession) => deviceSession.sessionId !== currentSessionId));
+    setCurrentSessionId(null);
   };
 
   const sendInvitation = async (invitation: SendInvitationInput) => {
     const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+    const targetUsername = invitation.username.trim().toLowerCase();
 
-    // Try to find the user_id by email
-    let toUserId: string | null = null;
-    const { data: userData } = await supabase.rpc('get_user_id_by_email', { email_input: invitation.email });
-    if (userData) {
-      toUserId = userData;
+    if (!/^[a-z0-9_]{3,24}$/.test(targetUsername)) {
+      throw new Error('El nombre de usuario no es válido. Usa entre 3 y 24 caracteres (letras, números o _).');
     }
 
-    // Check if already sent
+    const currentUsername = typeof activeUser.user_metadata?.username === 'string'
+      ? activeUser.user_metadata.username.trim().toLowerCase()
+      : '';
+
+    if (currentUsername && currentUsername === targetUsername) {
+      throw new Error('No puedes enviarte una invitación a ti mismo.');
+    }
+
+    const { data: targetUserData, error: targetUserError } = await supabase.rpc('get_user_by_username', {
+      username_input: targetUsername,
+    });
+
+    if (targetUserError) {
+      throw new Error(getFriendlyErrorMessage(targetUserError, 'No se pudo buscar el usuario por nombre de usuario.'));
+    }
+
+    const targetUser = Array.isArray(targetUserData) ? targetUserData[0] : null;
+
+    if (!targetUser?.user_id || !targetUser?.email) {
+      throw new Error('No existe ninguna cuenta con ese nombre de usuario.');
+    }
+
+    if (targetUser.user_id === activeUser.id) {
+      throw new Error('No puedes enviarte una invitación a ti mismo.');
+    }
+
+    if (state.friends.some((friend) => friend.otherUserId === targetUser.user_id)) {
+      throw new Error('Ese usuario ya está en tu lista de amigos.');
+    }
+
     const { data: existingInvitation } = await supabase
       .from('friend_invitations')
       .select('*')
       .eq('from_user_id', activeUser.id)
-      .eq('to_email', invitation.email)
+      .eq('to_user_id', targetUser.user_id)
       .eq('status', 'pending')
       .single();
 
     if (existingInvitation) {
-      throw new Error('Ya existe una invitación pendiente con este email.');
+      throw new Error('Ya tienes una invitación pendiente con este usuario.');
     }
 
     const { data, error } = await supabase
       .from('friend_invitations')
       .insert({
         from_user_id: activeUser.id,
-        to_email: invitation.email,
-        to_user_id: toUserId,
-        invited_name: invitation.name,
-        inviter_name: (activeUser.user_metadata?.full_name as string) || activeUser.email?.split('@')[0] || 'Un amigo',
+        to_email: targetUser.email,
+        to_username: targetUsername,
+        to_user_id: targetUser.user_id,
+        invited_name: targetUser.username ?? targetUsername,
+        inviter_name: currentUsername || activeUser.email?.split('@')[0] || 'Un amigo',
+        inviter_username: currentUsername || null,
         inviter_email: activeUser.email || '',
         status: 'pending',
       })
@@ -562,6 +953,7 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       userId: activeUser.id,
       otherUserId: invitation?.from_user_id,
       name: data?.[0]?.friend_name || invitation?.inviter_name || 'Amigo',
+      username: invitation?.inviter_username || undefined,
       email: invitation?.inviter_email || '',
       avatar: undefined,
       createdAt: new Date().toISOString(),
@@ -784,10 +1176,30 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
     setThemeState(newTheme);
   };
 
-  const updateUserProfile = async ({ fullName, avatarFile }: UpdateProfileInput) => {
+  const updateUserProfile = async ({ username, avatarFile }: UpdateProfileInput) => {
     const { supabase, user: activeUser } = await ensureAuthenticatedUser();
 
-    const normalizedName = fullName.trim();
+    const normalizedUsername = username.trim().toLowerCase();
+    const currentUsername = typeof activeUser.user_metadata?.username === 'string'
+      ? activeUser.user_metadata.username.trim().toLowerCase()
+      : '';
+
+    if (!/^[a-z0-9_]{3,24}$/.test(normalizedUsername)) {
+      throw new Error('El nombre de usuario debe tener entre 3 y 24 caracteres y solo puede incluir letras, números y guiones bajos (_).');
+    }
+
+    const hasUsernameChanged = normalizedUsername !== currentUsername;
+
+    if (hasUsernameChanged) {
+      const { error: updateUsernameError } = await supabase.rpc('update_my_username', {
+        username_input: normalizedUsername,
+      });
+
+      if (updateUsernameError) {
+        throw new Error(getFriendlyErrorMessage(updateUsernameError, 'No se pudo actualizar tu nombre de usuario.'));
+      }
+    }
+
     let uploadedAvatarUrl: string | null | undefined;
 
     if (avatarFile) {
@@ -811,15 +1223,28 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       uploadedAvatarUrl = publicData.publicUrl;
     }
 
-    const { data, error } = await supabase.auth.updateUser({
-      data: {
-        full_name: normalizedName || null,
-        ...(uploadedAvatarUrl ? { avatar_url: uploadedAvatarUrl } : {}),
-      },
-    });
+    const metadataUpdates: Record<string, unknown> = {};
 
-    if (error) {
-      throw new Error(getFriendlyErrorMessage(error, 'No se pudo actualizar tu perfil.'));
+    if (hasUsernameChanged) {
+      metadataUpdates.username = normalizedUsername;
+    }
+
+    if (uploadedAvatarUrl) {
+      metadataUpdates.avatar_url = uploadedAvatarUrl;
+    }
+
+    if (Object.keys(metadataUpdates).length > 0) {
+      const { data: authUpdateData, error: updateAuthMetadataError } = await supabase.auth.updateUser({
+        data: metadataUpdates,
+      });
+
+      if (updateAuthMetadataError) {
+        throw new Error(getFriendlyErrorMessage(updateAuthMetadataError, 'No se pudo sincronizar tu perfil con autenticación.'));
+      }
+
+      if (authUpdateData.user) {
+        setUser(authUpdateData.user);
+      }
     }
 
     if (uploadedAvatarUrl) {
@@ -833,8 +1258,17 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    if (data.user) {
-      setUser(data.user);
+    const { error: friendsUsernameError } = await supabase
+      .from('friends')
+      .update({ username: normalizedUsername })
+      .eq('other_user_id', activeUser.id);
+
+    if (friendsUsernameError) {
+      throw new Error(getFriendlyErrorMessage(friendsUsernameError, 'Se actualizó tu perfil, pero no se pudo propagar tu nombre de usuario a tus amigos.'));
+    }
+
+    if (Object.keys(metadataUpdates).length === 0) {
+      setUser(activeUser);
     }
   };
 
@@ -870,12 +1304,15 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         isLoadingData,
         session,
         user,
+        deviceSessions,
+        currentSessionId,
         theme,
         setTheme,
         signIn,
         signUp,
         signOut,
         refreshData,
+        refreshDeviceSessions,
         sendInvitation,
         acceptInvitation,
         rejectInvitation,

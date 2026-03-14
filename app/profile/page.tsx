@@ -5,19 +5,41 @@ import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { Navbar } from '@/components/layout/Navbar';
 import { usePagaYa } from '@/hooks/use-pagaya';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { LogOut, Moon, Sun } from 'lucide-react';
+import { Clock3, Laptop, LogOut, Moon, RefreshCw, Smartphone, Sun } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import type { Theme } from '@/lib/types';
+import type { DeviceSession, Theme } from '@/lib/types';
+
+function formatSessionDate(value: string | undefined) {
+  if (!value) {
+    return 'Sin datos';
+  }
+
+  return new Intl.DateTimeFormat('es-ES', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
+function DeviceSessionIcon({ deviceSession }: { deviceSession: DeviceSession }) {
+  const normalizedLabel = `${deviceSession.deviceLabel} ${deviceSession.os}`.toLowerCase();
+
+  if (normalizedLabel.includes('movil') || normalizedLabel.includes('android') || normalizedLabel.includes('ios')) {
+    return <Smartphone className="w-5 h-5 text-primary" />;
+  }
+
+  return <Laptop className="w-5 h-5 text-primary" />;
+}
 
 export default function ProfilePage() {
-  const { user, isReady, signOut, updateUserProfile, updatePassword, theme, setTheme } = usePagaYa();
+  const { user, isReady, signOut, updateUserProfile, updatePassword, theme, setTheme, deviceSessions, currentSessionId, refreshDeviceSessions } = usePagaYa();
   const { toast } = useToast();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [fullName, setFullName] = useState('');
+  const [username, setUsername] = useState('');
   const [avatarUrl, setAvatarUrl] = useState('');
   const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(null);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
@@ -26,19 +48,28 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
   const [isSubmittingTheme, setIsSubmittingTheme] = useState(false);
+  const [isRefreshingDevices, setIsRefreshingDevices] = useState(false);
 
   const userMetadata = useMemo(() => (user?.user_metadata ?? {}) as Record<string, unknown>, [user]);
 
   useEffect(() => {
-    const name = typeof userMetadata.full_name === 'string' ? userMetadata.full_name : '';
+    const currentUsername = typeof userMetadata.username === 'string' ? userMetadata.username : '';
     const avatar = typeof userMetadata.avatar_url === 'string' ? userMetadata.avatar_url : '';
 
-    setFullName(name);
+    setUsername(currentUsername);
     setAvatarUrl(avatar);
   }, [userMetadata]);
 
-  const displayName = fullName.trim() || user?.email?.split('@')[0] || 'Usuario';
+  const displayName = username.trim() || user?.email?.split('@')[0] || 'usuario';
   const effectiveAvatarUrl = avatarPreviewUrl || avatarUrl;
+  const currentDeviceSession = useMemo(
+    () => deviceSessions.find((deviceSession) => deviceSession.sessionId === currentSessionId) ?? null,
+    [currentSessionId, deviceSessions]
+  );
+  const otherDeviceSessions = useMemo(
+    () => deviceSessions.filter((deviceSession) => deviceSession.sessionId !== currentSessionId),
+    [currentSessionId, deviceSessions]
+  );
 
   useEffect(() => {
     if (!selectedAvatarFile) {
@@ -92,7 +123,7 @@ export default function ProfilePage() {
 
     try {
       await updateUserProfile({
-        fullName,
+        username,
         avatarFile: selectedAvatarFile,
       });
 
@@ -189,6 +220,22 @@ export default function ProfilePage() {
     }
   };
 
+  const handleRefreshDevices = async () => {
+    setIsRefreshingDevices(true);
+
+    try {
+      await refreshDeviceSessions();
+    } catch (error) {
+      toast({
+        title: 'No se pudo refrescar la lista',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsRefreshingDevices(false);
+    }
+  };
+
   if (!isReady) {
     return null;
   }
@@ -201,7 +248,7 @@ export default function ProfilePage() {
         <main className="container mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
           <header className="mb-8">
             <h1 className="text-2xl font-bold text-foreground sm:text-3xl">Tu perfil</h1>
-            <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">Actualiza tu nombre y avatar para personalizar la app.</p>
+            <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">Actualiza tu username y avatar para personalizar la app.</p>
           </header>
 
           <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
@@ -218,7 +265,7 @@ export default function ProfilePage() {
                   </AvatarFallback>
                 </Avatar>
                 <div className="text-center">
-                  <p className="font-semibold text-lg">{displayName}</p>
+                  <p className="font-semibold text-lg">@{displayName}</p>
                   <p className="text-sm text-muted-foreground break-all">{user?.email}</p>
                 </div>
               </CardContent>
@@ -228,7 +275,7 @@ export default function ProfilePage() {
               <CardHeader>
                 <CardTitle>Editar perfil</CardTitle>
                 <CardDescription>
-                  Aquí puedes cambiar tus datos en la app de PagaYa.
+                  Aquí puedes cambiar tu username y avatar en la app de PagaYa.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -239,14 +286,15 @@ export default function ProfilePage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="fullName">Nombre visible</Label>
+                    <Label htmlFor="username">Nombre de usuario</Label>
                     <Input
-                      id="fullName"
-                      value={fullName}
-                      onChange={(event) => setFullName(event.target.value)}
-                      placeholder="Indica un nombre para mostrar"
-                      maxLength={80}
+                      id="username"
+                      value={username}
+                      onChange={(event) => setUsername(event.target.value.toLowerCase())}
+                      placeholder="Introduce un username único"
+                      maxLength={24}
                     />
+                    <p className="text-xs text-muted-foreground">Debe ser único. Solo letras minúsculas, números y _. Entre 3 y 24 caracteres.</p>
                   </div>
 
                   <div className="space-y-2">
@@ -256,9 +304,10 @@ export default function ProfilePage() {
                       type="file"
                       accept="image/*"
                       onChange={handleAvatarChange}
+                      className="h-auto cursor-pointer py-2 file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/70"
                     />
                     <p className="text-xs text-muted-foreground">
-                      Sube una imagen (maximo 5MB). Si no subes ninguna, se mantiene la actual.
+                      Sube una imagen (máximo 5MB). Si no subes ninguna, se mantiene la actual.
                     </p>
                   </div>
 
@@ -299,6 +348,95 @@ export default function ProfilePage() {
                     Oscuro
                   </Button>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card className="lg:col-start-2">
+              <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div className="space-y-1.5">
+                  <CardTitle>Dispositivos y sesiones</CardTitle>
+                  <CardDescription>
+                    Cada dispositivo mantiene su propia sesión. Cerrar sesión aquí no afecta a los demás.
+                  </CardDescription>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleRefreshDevices}
+                  disabled={isRefreshingDevices}
+                  className="md:self-start"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isRefreshingDevices ? 'animate-spin' : ''}`} />
+                  Actualizar
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {currentDeviceSession && (
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-background shadow-sm">
+                          <DeviceSessionIcon deviceSession={currentDeviceSession} />
+                        </div>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-medium">Sesión actual</p>
+                            <Badge variant="secondary">Este dispositivo</Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {currentDeviceSession.deviceLabel}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        <p>Iniciada: {formatSessionDate(currentDeviceSession.signedInAt)}</p>
+                        <p>Última actividad: {formatSessionDate(currentDeviceSession.lastSeenAt)}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {otherDeviceSessions.length === 0 ? (
+                  <div className="rounded-xl border border-dashed p-4 text-sm text-muted-foreground">
+                    No hay otras sesiones activas en dispositivos distintos.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {otherDeviceSessions.map((deviceSession) => {
+                      return (
+                        <div
+                          key={deviceSession.id}
+                          className="flex flex-col gap-3 rounded-xl border p-4 md:flex-row md:items-center md:justify-between"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                              <DeviceSessionIcon deviceSession={deviceSession} />
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-medium">{deviceSession.deviceLabel}</p>
+                                <Badge variant="outline">Activa</Badge>
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                {deviceSession.browser} · {deviceSession.os}
+                              </p>
+                              <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                                <span className="inline-flex items-center gap-1">
+                                  <Clock3 className="w-3.5 h-3.5" />
+                                  Inicio: {formatSessionDate(deviceSession.signedInAt)}
+                                </span>
+                                <span className="inline-flex items-center gap-1">
+                                  <RefreshCw className="w-3.5 h-3.5" />
+                                  Última actividad: {formatSessionDate(deviceSession.lastSeenAt)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -344,7 +482,7 @@ export default function ProfilePage() {
               <CardHeader>
                 <CardTitle className="text-destructive">Cerrar sesión</CardTitle>
                 <CardDescription>
-                  Desconéctate de tu cuenta. Tendrás que volver a iniciar sesión para acceder.
+                  Solo se cerrará la sesión de este dispositivo. Las demás seguirán activas.
                 </CardDescription>
               </CardHeader>
               <CardContent>

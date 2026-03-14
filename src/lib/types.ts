@@ -8,6 +8,7 @@ export interface Friend {
   userId?: string;
   otherUserId?: string;
   name: string;
+  username?: string;
   email: string;
   avatar?: string;
   createdAt?: string;
@@ -16,9 +17,11 @@ export interface Friend {
 export interface FriendInvitation {
   id: string;
   fromUserId?: string;
+  toUserName?: string;
   toEmail: string;
   toUserId?: string;
   inviterName: string;
+  inviterUserName?: string;
   inviterEmail: string;
   status: InvitationStatus;
   createdAt?: string;
@@ -45,7 +48,24 @@ export interface AppState {
   debts: Debt[];
 }
 
+export interface DeviceSession {
+  id: string;
+  userId: string;
+  sessionId: string;
+  deviceLabel: string;
+  browser: string;
+  os: string;
+  userAgent?: string;
+  signedInAt: string;
+  lastSeenAt: string;
+  revokedAt?: string;
+}
+
 export interface AuthCredentials {
   email: string;
   password: string;
+}
+
+export interface RegisterCredentials extends AuthCredentials {
+  username: string;
 }

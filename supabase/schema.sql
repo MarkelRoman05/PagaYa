@@ -1,12 +1,15 @@
 create extension if not exists pgcrypto;
+create extension if not exists citext;
 
 create table if not exists public.friend_invitations (
   id uuid primary key default gen_random_uuid(),
   from_user_id uuid not null references auth.users(id) on delete cascade,
+  to_username text,
   to_email text not null,
   to_user_id uuid references auth.users(id) on delete cascade,
   invited_name text,
   inviter_name text not null,
+  inviter_username text,
   inviter_email text not null,
   status text not null default 'pending' check (status in ('pending', 'accepted', 'rejected')),
   created_at timestamptz not null default timezone('utc', now()),
@@ -16,11 +19,24 @@ create table if not exists public.friend_invitations (
 alter table public.friend_invitations
   add column if not exists invited_name text;
 
+alter table public.friend_invitations
+  add column if not exists to_username text;
+
+alter table public.friend_invitations
+  add column if not exists inviter_username text;
+
 create unique index if not exists friend_invitations_unique_idx
   on public.friend_invitations (from_user_id, to_email) where status = 'pending';
 
 create index if not exists friend_invitations_to_email_idx
   on public.friend_invitations (to_email, status);
+
+create index if not exists friend_invitations_to_username_idx
+  on public.friend_invitations (to_username, status);
+
+create unique index if not exists friend_invitations_unique_user_idx
+  on public.friend_invitations (from_user_id, to_user_id)
+  where status = 'pending' and to_user_id is not null;
 
 create index if not exists friend_invitations_from_user_idx
   on public.friend_invitations (from_user_id, created_at desc);
@@ -33,10 +49,14 @@ create table if not exists public.friends (
   user_id uuid not null references auth.users(id) on delete cascade,
   other_user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
+  username text,
   email text not null,
   avatar text,
   created_at timestamptz not null default timezone('utc', now())
 );
+
+alter table public.friends
+  add column if not exists username text;
 
 create unique index if not exists friends_user_other_user_idx
   on public.friends (user_id, other_user_id);
@@ -102,9 +122,173 @@ create index if not exists debts_friend_idx
 create index if not exists debts_other_user_idx
   on public.debts (other_user_id, created_at desc);
 
+create table if not exists public.user_profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  username citext unique,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  constraint user_profiles_username_format_check
+    check (username is null or username::text ~ '^[a-z0-9_]{3,24}$')
+);
+
+create index if not exists user_profiles_username_idx
+  on public.user_profiles (username);
+
+drop function if exists public.sync_user_profile_from_auth_users() cascade;
+
+create function public.sync_user_profile_from_auth_users()
+returns trigger as $$
+declare
+  v_username text;
+begin
+  v_username := lower(nullif(trim((new.raw_user_meta_data->>'username')::text), ''));
+
+  -- Never block auth signup because of malformed metadata.
+  if v_username is not null and v_username !~ '^[a-z0-9_]{3,24}$' then
+    v_username := null;
+  end if;
+
+  begin
+    insert into public.user_profiles (user_id, username, updated_at)
+    values (new.id, v_username::citext, timezone('utc', now()))
+    on conflict (user_id)
+    do update
+      set username = excluded.username,
+          updated_at = timezone('utc', now());
+  exception
+    when unique_violation then
+      -- If username is already taken in a race/conflict, keep user account creation alive.
+      insert into public.user_profiles (user_id, username, updated_at)
+      values (new.id, null, timezone('utc', now()))
+      on conflict (user_id)
+      do update
+        set updated_at = timezone('utc', now());
+    when others then
+      -- Any profile sync issue should not abort auth.users insert.
+      insert into public.user_profiles (user_id, username, updated_at)
+      values (new.id, null, timezone('utc', now()))
+      on conflict (user_id)
+      do update
+        set updated_at = timezone('utc', now());
+  end;
+
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_auth_user_upsert_profile on auth.users;
+create trigger on_auth_user_upsert_profile
+after insert or update of raw_user_meta_data on auth.users
+for each row
+execute function public.sync_user_profile_from_auth_users();
+
+insert into public.user_profiles (user_id, username)
+select
+  u.id,
+  lower(nullif(trim((u.raw_user_meta_data->>'username')::text), ''))::citext
+from auth.users u
+where (u.raw_user_meta_data->>'username') is not null
+on conflict (user_id)
+do update
+  set username = excluded.username,
+      updated_at = timezone('utc', now());
+
+create or replace function public.is_username_available(username_input text)
+returns boolean as $$
+declare
+  v_username text;
+begin
+  v_username := lower(nullif(trim(username_input), ''));
+
+  if v_username is null then
+    return false;
+  end if;
+
+  if v_username !~ '^[a-z0-9_]{3,24}$' then
+    return false;
+  end if;
+
+  return not exists (
+    select 1
+    from public.user_profiles up
+    where up.username = v_username::citext
+  );
+end;
+$$ language plpgsql security definer;
+
+drop function if exists public.get_user_by_username(text);
+
+create or replace function public.get_user_by_username(username_input text)
+returns table (
+  user_id uuid,
+  username text,
+  email text,
+  avatar_url text
+) as $$
+  select
+    u.id,
+    up.username::text,
+    u.email,
+    (u.raw_user_meta_data->>'avatar_url')::text as avatar_url
+  from public.user_profiles up
+  join auth.users u on u.id = up.user_id
+  where up.username = lower(trim(username_input))::citext
+  limit 1;
+$$ language sql security definer;
+
+create or replace function public.update_my_username(username_input text)
+returns void as $$
+declare
+  v_user_id uuid;
+  v_username text;
+begin
+  v_user_id := auth.uid();
+
+  if v_user_id is null then
+    raise exception 'User not authenticated';
+  end if;
+
+  v_username := lower(nullif(trim(username_input), ''));
+
+  if v_username is null or v_username !~ '^[a-z0-9_]{3,24}$' then
+    raise exception 'El nombre de usuario no cumple el formato permitido.';
+  end if;
+
+  if exists (
+    select 1
+    from public.user_profiles up
+    where up.username = v_username::citext
+      and up.user_id <> v_user_id
+  ) then
+    raise exception 'Este nombre de usuario ya está en uso.';
+  end if;
+
+  update auth.users u
+  set raw_user_meta_data = coalesce(u.raw_user_meta_data, '{}'::jsonb) || jsonb_build_object('username', v_username)
+  where u.id = v_user_id;
+
+  insert into public.user_profiles (user_id, username, updated_at)
+  values (v_user_id, v_username::citext, timezone('utc', now()))
+  on conflict (user_id)
+  do update
+    set username = excluded.username,
+        updated_at = timezone('utc', now());
+end;
+$$ language plpgsql security definer;
+
+revoke all on function public.is_username_available(text) from public;
+grant execute on function public.is_username_available(text) to anon, authenticated;
+
+revoke all on function public.get_user_by_username(text) from public;
+grant execute on function public.get_user_by_username(text) to authenticated;
+
+revoke all on function public.update_my_username(text) from public;
+grant execute on function public.update_my_username(text) to authenticated;
+
 alter table public.friends enable row level security;
 alter table public.friend_invitations enable row level security;
 alter table public.debts enable row level security;
+alter table public.user_profiles enable row level security;
 
 -- Function to get user_id by email
 create or replace function public.get_user_id_by_email(email_input text)
@@ -121,8 +305,10 @@ declare
   v_friend2_id uuid;
   v_current_user_id uuid;
   v_current_user_name text;
+  v_current_user_username text;
   v_current_user_email text;
   v_current_user_avatar text;
+  v_inviter_username text;
   v_inviter_avatar text;
 begin
   -- Get current user
@@ -147,29 +333,37 @@ begin
 
   -- Get current user profile to fill inviter-side friend record
   select
+    lower(nullif(trim((u.raw_user_meta_data->>'username')::text), '')),
     coalesce((u.raw_user_meta_data->>'full_name')::text, split_part(u.email, '@', 1)),
     coalesce(u.email, ''),
     (u.raw_user_meta_data->>'avatar_url')::text
-  into v_current_user_name, v_current_user_email, v_current_user_avatar
+  into v_current_user_username, v_current_user_name, v_current_user_email, v_current_user_avatar
   from auth.users u
   where u.id = v_current_user_id;
 
+  select lower(nullif(trim((u.raw_user_meta_data->>'username')::text), ''))
+  into v_inviter_username
+  from auth.users u
+  where u.id = v_invitation.from_user_id;
+
   -- Create first friend record (current user -> inviter)
-  insert into public.friends (user_id, other_user_id, name, email, avatar)
+  insert into public.friends (user_id, other_user_id, name, username, email, avatar)
   values (
     v_current_user_id,
     v_invitation.from_user_id,
     v_invitation.inviter_name,
+    coalesce(v_invitation.inviter_username, v_inviter_username),
     v_invitation.inviter_email,
     v_inviter_avatar
   ) returning friends.id into v_friend1_id;
 
   -- Create second friend record (inviter -> current user)
-  insert into public.friends (user_id, other_user_id, name, email, avatar)
+  insert into public.friends (user_id, other_user_id, name, username, email, avatar)
   values (
     v_invitation.from_user_id,
     v_current_user_id,
     coalesce(v_invitation.invited_name, v_current_user_name, 'Amigo'),
+    v_current_user_username,
     v_current_user_email,
     v_current_user_avatar
   ) returning friends.id into v_friend2_id;
@@ -431,6 +625,46 @@ create policy "user_settings_upsert_own"
 drop policy if exists "user_settings_update_own" on public.user_settings;
 create policy "user_settings_update_own"
   on public.user_settings
+  for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create table if not exists public.user_device_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  session_id text not null,
+  device_label text not null,
+  browser text not null default 'Navegador',
+  os text not null default 'Sistema desconocido',
+  user_agent text,
+  signed_in_at timestamptz not null default timezone('utc', now()),
+  last_seen_at timestamptz not null default timezone('utc', now()),
+  revoked_at timestamptz
+);
+
+create unique index if not exists user_device_sessions_user_session_idx
+  on public.user_device_sessions (user_id, session_id);
+
+create index if not exists user_device_sessions_user_last_seen_idx
+  on public.user_device_sessions (user_id, last_seen_at desc);
+
+alter table public.user_device_sessions enable row level security;
+
+drop policy if exists "user_device_sessions_select_own" on public.user_device_sessions;
+create policy "user_device_sessions_select_own"
+  on public.user_device_sessions
+  for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "user_device_sessions_insert_own" on public.user_device_sessions;
+create policy "user_device_sessions_insert_own"
+  on public.user_device_sessions
+  for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "user_device_sessions_update_own" on public.user_device_sessions;
+create policy "user_device_sessions_update_own"
+  on public.user_device_sessions
   for update
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);

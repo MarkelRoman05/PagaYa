@@ -3,7 +3,7 @@
 import { FormEvent, Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { AlertCircle, LoaderCircle, LogIn, Mail, ShieldCheck, UserPlus, Wallet } from 'lucide-react';
+import { AlertCircle, LoaderCircle, LogIn, Mail, UserPlus, Wallet } from 'lucide-react';
 import { usePagaYa } from '@/hooks/use-pagaya';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -36,10 +36,11 @@ function AuthPageContent() {
   const { toast } = useToast();
   const { isReady, isConfigured, isAuthenticated, isLoadingAuth, signIn, signUp, session } = usePagaYa();
   const [loginValues, setLoginValues] = useState({ email: '', password: '' });
-  const [registerValues, setRegisterValues] = useState({ email: '', password: '', confirmPassword: '' });
+  const [registerValues, setRegisterValues] = useState({ email: '', username: '', password: '', confirmPassword: '' });
   const [isSubmitting, setIsSubmitting] = useState<'login' | 'register' | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
 
+  const initialTab = searchParams.get('tab') === 'register' ? 'register' : 'login';
   const nextPath = searchParams.get('next') || '/dashboard';
 
   useEffect(() => {
@@ -84,11 +85,21 @@ function AuthPageContent() {
     event.preventDefault();
 
     const email = registerValues.email.trim().toLowerCase();
+    const username = registerValues.username.trim().toLowerCase();
 
-    if (!email || !registerValues.password || !registerValues.confirmPassword) {
+    if (!email || !username || !registerValues.password || !registerValues.confirmPassword) {
       toast({
         title: 'Completa el formulario',
-        description: 'Necesitamos email y contraseña para crear tu cuenta.',
+        description: 'Necesitamos email, nombre de usuario y contraseña para crear tu cuenta.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!/^[a-z0-9_]{3,24}$/.test(username)) {
+      toast({
+        title: 'Nombre de usuario no válido',
+        description: 'Usa entre 3 y 24 caracteres: letras, números o guion bajo (_).',
         variant: 'destructive',
       });
       return;
@@ -116,8 +127,8 @@ function AuthPageContent() {
     setSuccessMessage('');
 
     try {
-      await signUp({ email, password: registerValues.password });
-      setRegisterValues({ email, password: '', confirmPassword: '' });
+      await signUp({ email, username, password: registerValues.password });
+      setRegisterValues({ email, username, password: '', confirmPassword: '' });
 
       if (!session) {
         setSuccessMessage('Cuenta creada. Revisa tu correo para confirmar el acceso si tienes verificación por email activada en Supabase.');
@@ -151,29 +162,8 @@ function AuthPageContent() {
               Paga<span className="text-primary">Ya</span>
             </h1>
             <p className="max-w-xl text-base text-muted-foreground sm:text-lg">
-              Accede a tu espacio personal y guarda de forma persistente amigos, deudas e historial desde cualquier dispositivo.
+              Accede a tu espacio personal y guarda tus deudas con amigos y el historial desde cualquier dispositivo.
             </p>
-          </div>
-
-          <div className="grid sm:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <ShieldCheck className="w-5 h-5 text-primary" />
-                  Cuenta segura
-                </CardTitle>
-                <CardDescription>Email y contraseña con sesión persistente.</CardDescription>
-              </CardHeader>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Mail className="w-5 h-5 text-primary" />
-                  Datos en la nube
-                </CardTitle>
-                <CardDescription>Tus amigos y deudas quedan guardados.</CardDescription>
-              </CardHeader>
-            </Card>
           </div>
 
           <p className="text-sm text-muted-foreground">
@@ -208,7 +198,7 @@ function AuthPageContent() {
                 </Alert>
               )}
 
-              <Tabs defaultValue="login" className="w-full">
+              <Tabs defaultValue={initialTab} className="w-full">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="login">Login</TabsTrigger>
                   <TabsTrigger value="register">Registro</TabsTrigger>
@@ -257,6 +247,18 @@ function AuthPageContent() {
                         onChange={(event) => setRegisterValues((current) => ({ ...current, email: event.target.value }))}
                         placeholder="tu@email.com"
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="register-username">Nombre de usuario</Label>
+                      <Input
+                        id="register-username"
+                        type="text"
+                        autoComplete="username"
+                        value={registerValues.username}
+                        onChange={(event) => setRegisterValues((current) => ({ ...current, username: event.target.value }))}
+                        placeholder="Introduce un username"
+                      />
+                      <p className="text-xs text-muted-foreground">Entre 3 y 20 caracteres. Puede contener letras, números y guiones bajos.</p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="register-password">Contraseña</Label>

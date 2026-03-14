@@ -170,7 +170,7 @@ export default function NewDebt() {
                       className={cn(
                         "flex items-center justify-between rounded-xl border-2 p-4 cursor-pointer transition-all",
                         formData.type === "owed_by_me"
-                          ? "border-orange-500 bg-orange-50"
+                          ? "border-orange-500 bg-orange-50 dark:bg-orange-950/30"
                           : "border-muted hover:border-muted-foreground/30",
                       )}
                     >

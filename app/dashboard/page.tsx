@@ -19,8 +19,8 @@ export default function Dashboard() {
   const { toast } = useToast();
 
   const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
-  const fullName = typeof userMetadata.full_name === 'string' ? userMetadata.full_name.trim() : '';
-  const firstName = fullName || user?.email?.split('@')[0] || 'Usuario';
+  const username = typeof userMetadata.username === 'string' ? userMetadata.username.trim() : '';
+  const firstName = username || user?.email?.split('@')[0] || 'usuario';
 
   const pendingDebts = debts.filter(d => d.status !== 'paid');
   const owedToMe = pendingDebts.filter(d => d.type === 'owed_to_me');
@@ -51,7 +51,7 @@ export default function Dashboard() {
         <main className="container mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
         <header className="mb-8 flex flex-col gap-4 sm:gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-foreground sm:text-3xl">¡Hola, {firstName}!</h1>
+            <h1 className="text-2xl font-bold text-foreground sm:text-3xl">¡Hola, @{firstName}!</h1>
             <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">Esto es lo que debes y lo que te deben. Págalo cuanto antes, que si no tu amigo se enfadará.</p>
           </div>
           <div className="flex w-full items-center gap-2 sm:w-auto">

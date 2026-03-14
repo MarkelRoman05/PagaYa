@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePagaYa } from "@/hooks/use-pagaya";
 import {
   Dialog,
@@ -12,15 +12,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Save } from "lucide-react";
+import { ChevronsUpDown, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 
@@ -33,6 +27,10 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
   const { friends, addDebt, isLoadingData } = usePagaYa();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [friendSearch, setFriendSearch] = useState("");
+  const [isFriendSelectOpen, setIsFriendSelectOpen] = useState(false);
+  const friendSearchInputRef = useRef<HTMLInputElement>(null);
+  const friendPickerRef = useRef<HTMLDivElement>(null);
 
   const [formData, setFormData] = useState({
     amount: "",
@@ -40,11 +38,67 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
     friendId: "",
     type: "owed_to_me" as "owed_to_me" | "owed_by_me",
   });
+  const selectedFriend = friends.find(
+    (friend) => friend.id === formData.friendId,
+  );
+  const filteredFriends = useMemo(() => {
+    const normalizedQuery = friendSearch.trim().toLowerCase();
+
+    if (!normalizedQuery) {
+      return friends;
+    }
+
+    return friends.filter((friend) =>
+      friend.name.toLowerCase().includes(normalizedQuery),
+    );
+  }, [friendSearch, friends]);
+
+  useEffect(() => {
+    if (!isFriendSelectOpen) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      friendSearchInputRef.current?.focus();
+    }, 0);
+    const retryTimeoutId = window.setTimeout(() => {
+      friendSearchInputRef.current?.focus();
+    }, 50);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearTimeout(retryTimeoutId);
+    };
+  }, [isFriendSelectOpen]);
+
+  useEffect(() => {
+    if (!isFriendSelectOpen) {
+      return;
+    }
+
+    const handlePointerDownOutside = (event: MouseEvent) => {
+      if (!friendPickerRef.current) {
+        return;
+      }
+
+      if (!friendPickerRef.current.contains(event.target as Node)) {
+        setIsFriendSelectOpen(false);
+        setFriendSearch("");
+      }
+    };
+
+    document.addEventListener("mousedown", handlePointerDownOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDownOutside);
+    };
+  }, [isFriendSelectOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const normalizedAmount = formData.amount
+      .replace(/\./g, "")
       .replace(",", ".")
       .replace(/[^0-9.-]/g, "");
     const parsedAmount = Number.parseFloat(normalizedAmount);
@@ -127,7 +181,10 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex-1 space-y-6 overflow-y-auto pr-1 sm:pr-2">
+        <form
+          onSubmit={handleSubmit}
+          className="flex-1 space-y-6 overflow-y-auto pr-1 sm:pr-2"
+        >
           <div className="space-y-3">
             <Label>¿Quién debe el dinero?</Label>
             <RadioGroup
@@ -143,7 +200,7 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
                   "flex items-center justify-between rounded-lg border-2 p-3 cursor-pointer transition-all text-sm focus-within:ring-2 focus-within:ring-primary/50 focus-within:ring-inset focus-within:ring-offset-0",
                   formData.type === "owed_to_me"
                     ? "border-primary bg-primary/10 text-foreground shadow-sm"
-                    : "border-muted hover:border-muted-foreground/30"
+                    : "border-muted hover:border-muted-foreground/30",
                 )}
               >
                 <div className="flex flex-col gap-1">
@@ -163,8 +220,8 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
                 className={cn(
                   "flex items-center justify-between rounded-lg border-2 p-3 cursor-pointer transition-all text-sm focus-within:ring-2 focus-within:ring-orange-300 focus-within:ring-inset focus-within:ring-offset-0",
                   formData.type === "owed_by_me"
-                    ? "border-orange-500 bg-orange-50 text-foreground shadow-sm"
-                    : "border-muted hover:border-muted-foreground/30"
+                    ? "border-orange-500 bg-orange-50 dark:bg-orange-950/30 text-foreground shadow-sm"
+                    : "border-muted hover:border-muted-foreground/30",
                 )}
               >
                 <div className="flex flex-col gap-1">
@@ -186,30 +243,111 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
             <Label htmlFor="friend" className="text-sm">
               Amigo
             </Label>
-            <Select
-              value={formData.friendId}
-              onValueChange={(val) =>
-                setFormData({ ...formData, friendId: val })
-              }
-            >
-              <SelectTrigger
+            <div ref={friendPickerRef} className="relative">
+              <Button
                 id="friend"
-                className="h-10 rounded-lg border-muted transition-colors focus:ring-primary/60 focus:ring-inset focus:ring-offset-0 data-[state=open]:border-primary data-[state=open]:ring-2 data-[state=open]:ring-primary/60 data-[state=open]:ring-inset data-[state=open]:ring-offset-0"
+                type="button"
+                variant="outline"
+                role="combobox"
+                aria-expanded={isFriendSelectOpen}
+                onClick={() => {
+                  setIsFriendSelectOpen((prev) => {
+                    if (prev) {
+                      setFriendSearch("");
+                    }
+                    return !prev;
+                  });
+                }}
+                className="h-10 w-full justify-between rounded-lg border-muted px-3 font-normal transition-colors focus:ring-primary/60 focus:ring-inset focus:ring-offset-0 data-[state=open]:border-primary data-[state=open]:ring-2 data-[state=open]:ring-primary/60 data-[state=open]:ring-inset data-[state=open]:ring-offset-0"
               >
-                <SelectValue placeholder="Selecciona un amigo" />
-              </SelectTrigger>
-              <SelectContent className="rounded-lg border-border shadow-xl">
-                {friends.map((friend) => (
-                  <SelectItem
-                    key={friend.id}
-                    value={friend.id}
-                    className="rounded-md data-[highlighted]:bg-primary/10 data-[highlighted]:text-foreground data-[state=checked]:bg-primary/15 data-[state=checked]:font-semibold"
-                  >
-                    {friend.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  {selectedFriend ? (
+                    <>
+                      <Avatar className="h-6 w-6">
+                        {selectedFriend.avatar ? (
+                          <AvatarImage
+                            src={selectedFriend.avatar}
+                            alt={selectedFriend.name}
+                          />
+                        ) : null}
+                        <AvatarFallback className="text-xs font-semibold uppercase">
+                          {selectedFriend.name.charAt(0)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="truncate">{selectedFriend.name}</span>
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">
+                      Selecciona un amigo
+                    </span>
+                  )}
+                </div>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+              {isFriendSelectOpen && (
+                <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-40 rounded-lg border border-border bg-popover shadow-xl">
+                  <div className="sticky top-0 z-10 border-b border-border bg-popover p-2">
+                    <Input
+                      ref={friendSearchInputRef}
+                      autoFocus
+                      value={friendSearch}
+                      onChange={(event) => setFriendSearch(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                        }
+                        if (event.key === "Escape") {
+                          setIsFriendSelectOpen(false);
+                          setFriendSearch("");
+                        }
+                      }}
+                      placeholder="Buscar amigo..."
+                      className="h-9"
+                    />
+                  </div>
+                  {filteredFriends.length === 0 ? (
+                    <p className="px-2 py-3 text-sm text-muted-foreground">
+                      No se encontraron amigos.
+                    </p>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto p-1">
+                      {filteredFriends.map((friend) => {
+                        const isSelected = formData.friendId === friend.id;
+
+                        return (
+                          <button
+                            key={friend.id}
+                            type="button"
+                            onClick={() => {
+                              setFormData({ ...formData, friendId: friend.id });
+                              setIsFriendSelectOpen(false);
+                              setFriendSearch("");
+                            }}
+                            className={cn(
+                              "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-primary/10 hover:text-foreground",
+                              isSelected && "bg-primary/15 font-semibold",
+                            )}
+                          >
+                            <Avatar className="h-6 w-6">
+                              {friend.avatar ? (
+                                <AvatarImage
+                                  src={friend.avatar}
+                                  alt={friend.name}
+                                />
+                              ) : null}
+                              <AvatarFallback className="text-xs font-semibold uppercase">
+                                {friend.name.charAt(0)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="truncate">{friend.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             {friends.length === 0 && (
               <p className="text-xs text-orange-600 mt-1">
                 Primero añade amigos en la sección de amigos.
@@ -228,22 +366,37 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
               <Input
                 id="amount"
                 type="text"
+                inputMode="decimal"
+                pattern="[0-9]*[.,]?[0-9]*"
+                enterKeyHint="done"
                 placeholder="0,00"
                 className="pl-8 h-10 rounded-lg text-base font-bold border-muted focus-visible:border-primary focus-visible:ring-primary/60 focus-visible:ring-inset focus-visible:ring-offset-0"
                 value={formData.amount}
                 onChange={(e) => {
-                  let value = e.target.value;
-                  value = value.replace(/\./g, ",");
-                  value = value.replace(/[^\d,]/g, "");
-                  const parts = value.split(",");
-                  if (parts.length > 2) {
-                    value = `${parts[0]},${parts.slice(1).join("")}`;
+                  const rawValue = e.target.value
+                    .replace(/\s/g, "")
+                    .replace(/\./g, "")
+                    .replace(/[^\d,]/g, "");
+
+                  const hasComma = rawValue.includes(",");
+                  const [integerRaw = "", ...decimalParts] = rawValue.split(",");
+                  const decimalPart = decimalParts.join("");
+
+                  let integerPart = integerRaw.replace(/^0+(?=\d)/, "");
+
+                  if (!integerPart && hasComma) {
+                    integerPart = "0";
                   }
-                  if (value.startsWith(",")) {
-                    value = `0${value}`;
-                  }
-                  value = value.replace(/^0+(?=\d)/, "");
-                  setFormData({ ...formData, amount: value });
+
+                  const formattedInteger = integerPart
+                    ? integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ".")
+                    : "";
+
+                  const formattedValue = hasComma
+                    ? `${formattedInteger},${decimalPart}`
+                    : formattedInteger;
+
+                  setFormData({ ...formData, amount: formattedValue });
                 }}
                 required
               />
@@ -256,7 +409,7 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
             </Label>
             <Input
               id="description"
-              placeholder="Ej: Cena, Cine, Gasolina..."
+              placeholder="Cena, Cine, Gasolina..."
               className="h-10 rounded-lg border-muted focus-visible:border-primary focus-visible:ring-primary/60 focus-visible:ring-inset focus-visible:ring-offset-0"
               value={formData.description}
               onChange={(e) =>
