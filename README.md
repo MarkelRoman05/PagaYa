@@ -1,153 +1,218 @@
 # PagaYa
 
-PagaYa es una app para gestionar pagos entre amigos: quién debe a quién, cuánto queda pendiente y qué pagos ya están liquidados. Ahora ya está preparada para funcionar con usuarios reales, autenticación por email y persistencia en la nube usando Supabase.
+<p align="center">
+	Plataforma para gestionar deudas entre amigos, con autenticacion real, persistencia en la nube y experiencia web + movil.
+</p>
 
-## Qué hace ahora
+<p align="center">
+	<a href="https://github.com/MarkelRoman05/PagaYa/stargazers"><img src="https://img.shields.io/github/stars/MarkelRoman05/PagaYa?style=for-the-badge" alt="Stars"></a>
+	<a href="https://github.com/MarkelRoman05/PagaYa/network/members"><img src="https://img.shields.io/github/forks/MarkelRoman05/PagaYa?style=for-the-badge" alt="Forks"></a>
+	<a href="https://github.com/MarkelRoman05/PagaYa/issues"><img src="https://img.shields.io/github/issues/MarkelRoman05/PagaYa?style=for-the-badge" alt="Issues"></a>
+	<a href="https://github.com/MarkelRoman05/PagaYa/blob/main/README.md"><img src="https://img.shields.io/badge/status-production--ready-00A86B?style=for-the-badge" alt="Status"></a>
+	<a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-15-black?style=for-the-badge&logo=next.js" alt="Next.js"></a>
+	<a href="https://supabase.com/"><img src="https://img.shields.io/badge/Supabase-Auth%20%2B%20DB-3FCF8E?style=for-the-badge&logo=supabase&logoColor=white" alt="Supabase"></a>
+</p>
 
-- Registro y login por email y contraseña.
-- Persistencia real de amigos y deudas por usuario en Supabase.
-- Permite registrar deudas, marcarlas como pagadas y consultar el historial.
+## Tabla de contenidos
 
-## Stack
+- [Vision del producto](#vision-del-producto)
+- [Funcionalidades principales](#funcionalidades-principales)
+- [Stack tecnologico](#stack-tecnologico)
+- [Arquitectura](#arquitectura)
+- [Demo y despliegue](#demo-y-despliegue)
+- [Empezar en local](#empezar-en-local)
+- [Variables de entorno](#variables-de-entorno)
+- [Scripts disponibles](#scripts-disponibles)
+- [Build movil con Capacitor](#build-movil-con-capacitor)
+- [Modelo de datos](#modelo-de-datos)
+- [Roadmap](#roadmap)
+- [Contribuir](#contribuir)
 
-- Next.js 15
+## Vision del producto
+
+PagaYa resuelve un problema cotidiano: organizar pagos entre amigos sin friccion, sin discusiones y sin perder trazabilidad.
+
+La app esta pensada para un uso real en produccion:
+
+- Autenticacion por email con Supabase.
+- Persistencia cloud con politicas RLS.
+- Flujo de invitaciones entre usuarios reales.
+- Confirmacion de pagos entre las dos partes.
+- Historial de actividad y gestion de sesiones por dispositivo.
+- Experiencia responsive web y empaquetado movil nativo (Android/iOS) con Capacitor.
+
+## Funcionalidades principales
+
+- Registro e inicio de sesion por email.
+- Perfil de usuario con username y avatar.
+- Invitaciones de amistad por username.
+- Aceptacion/rechazo de invitaciones entrantes.
+- Alta de deudas con descripcion, importe y tipo.
+- Estados de deuda: pendiente, pago solicitado, pagada.
+- Confirmacion de pago por la otra parte para evitar cierres unilaterales.
+- Eliminacion de amistades y limpieza de deudas relacionadas.
+- Dashboard con resumen de lo que te deben y lo que debes.
+- Historial para seguimiento de movimientos.
+- Gestion de sesiones activas por dispositivo.
+- Cambio de tema visual (claro/oscuro).
+
+## Stack tecnologico
+
+### Frontend
+
+- Next.js 15 (App Router)
 - React 19
-- Tailwind CSS
-- Supabase Auth + Postgres
+- TypeScript
+- Tailwind CSS + Radix UI
+- Lucide Icons
 
-## Configuración local
+### Backend y datos
 
-1. Crea un proyecto gratuito en Supabase.
-2. En el editor SQL de Supabase ejecuta el contenido de [supabase/schema.sql](supabase/schema.sql).
-3. Copia [PagaYa/.env.example](PagaYa/.env.example) a un archivo .env y rellena:
+- Supabase Auth
+- Supabase Postgres
+- Supabase Storage (bucket de avatares)
+- RLS (Row Level Security)
 
-```bash
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
+### Movil
+
+- Capacitor 8
+- Android Studio / Xcode para builds nativos
+
+## Arquitectura
+
+```text
+UI (Next.js + React)
+	 |
+	 |-- Hooks de dominio (use-pagaya)
+	 |-- Cliente Supabase (auth + db + storage)
+	 |
+Supabase
+	 |-- Authentication
+	 |-- Postgres (friends, debts, invitations, user_device_sessions)
+	 |-- Storage (avatars)
 ```
 
-4. En Supabase Auth, habilita Email/Password en Authentication > Providers.
-5. Si quieres acceso directo tras registrarte, desactiva la confirmación obligatoria por email. Si la dejas activa, el usuario tendrá que verificar su correo antes de entrar.
+## Demo y despliegue
 
-## Desarrollo local
+- Web (Vercel): recomendado para entorno productivo.
+- Movil (Capacitor): export estatico + sync a plataformas nativas.
+
+Si vas a publicar la demo, añade aqui tus enlaces:
+
+- URL web: https://pagaya.vercel.app/
+- Android: https://github.com/MarkelRoman05/PagaYa/releases/tag/android-latest
+
+## Empezar en local
+
+### 1) Clonar e instalar
 
 ```bash
-npm ci
+git clone https://github.com/MarkelRoman05/PagaYa.git
+cd PagaYa
+npm install
+```
+
+### 2) Configurar entorno
+
+```bash
+cp .env.example .env
+```
+
+Rellena las variables de Supabase y arranca el proyecto:
+
+```bash
 npm run dev
 ```
 
-La aplicación arranca en el puerto 9002.
+La app web se sirve en:
 
-## Comandos útiles
-
-```bash
-npm run build
-npm run typecheck
+```text
+http://localhost:9002
 ```
 
-## App móvil con Capacitor (sin reescribir frontend)
+## Variables de entorno
 
-Este proyecto ya está preparado para ejecutarse como app móvil en Android/iOS usando Capacitor y reutilizando la UI responsive de Next.js.
+Usa como base el archivo `.env.example`.
 
-Modo APK autonomo (sin localhost ni npm run dev):
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://tu-proyecto.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=tu-clave-publica-anon
+```
+
+## Scripts disponibles
+
+### Desarrollo y calidad
+
+- `npm run dev`: servidor local en puerto 9002 con Turbopack.
+- `npm run build`: build de produccion.
+- `npm run start`: arranque de build en produccion.
+- `npm run lint`: analisis de lint.
+- `npm run typecheck`: chequeo de tipos con TypeScript.
+
+### Capacitor y movil
+
+- `npm run cap:sync`: sincroniza assets web con plataformas nativas.
+- `npm run cap:android`: abre proyecto Android en Android Studio.
+- `npm run cap:ios`: abre proyecto iOS en Xcode.
+- `npm run mobile:build:web`: build estatico para contenedor movil.
+- `npm run mobile:sync:android`: sincroniza build estatico en Android.
+- `npm run mobile:apk:debug`: genera APK debug en Android.
+- `npm run mobile:dev:android`: ejecuta Android contra servidor local (emulador).
+- `npm run mobile:dev:android:usb`: ejecuta Android por USB con `adb reverse`.
+- `npm run mobile:dev:ios`: ejecuta iOS contra servidor local.
+
+### Versionado
+
+- `npm run release:patch`
+- `npm run release:minor`
+- `npm run release:major`
+
+## Build movil con Capacitor
+
+Flujo rapido para Android (debug):
 
 ```bash
 npm run mobile:apk:debug
 ```
 
-Esto genera y empaqueta la web estática en `out/`, sincroniza Capacitor usando `CAP_WEB_DIR=out` y compila el APK debug.
+Este comando:
 
-APK resultante:
+1. Genera build web estatico.
+2. Sincroniza con Android.
+3. Ejecuta Gradle para construir la APK debug.
 
-- `android/app/build/outputs/apk/debug/app-debug.apk`
+## Modelo de datos
 
-Cómo funciona en este repo:
+Entidades principales en Supabase:
 
-- Capacitor crea una app nativa contenedora (carpetas android/ e ios/).
-- En desarrollo, la app carga tu servidor Next local (live reload) usando la variable CAP_SERVER_URL.
-- No necesitas export estático para este flujo.
+- `friends`: relaciones de amistad entre usuarios.
+- `friend_invitations`: invitaciones pendientes/aceptadas/rechazadas.
+- `debts`: deudas con estado y trazabilidad de pago.
+- `user_device_sessions`: sesiones activas por dispositivo.
 
-Flujo de desarrollo:
+El esquema SQL de referencia esta en `supabase/schema.sql`.
 
-1. Arranca Next.js:
+## Roadmap
 
-```bash
-npm run dev
-```
+- Notificaciones push para solicitudes y confirmaciones.
+- Division automatica de gastos en grupos.
+- Exportacion de historico (CSV/PDF).
+- Multi-moneda y conversion automatica.
+- Analitica de gastos por categorias.
 
-2. En otra terminal, ejecuta Android (emulador):
+## Contribuir
 
-```bash
-npm run mobile:dev:android
-```
+1. Haz fork del repositorio.
+2. Crea una rama de feature: `git checkout -b feature/nueva-funcionalidad`.
+3. Realiza tus cambios y commits descriptivos.
+4. Sube tu rama: `git push origin feature/nueva-funcionalidad`.
+5. Abre un Pull Request.
 
-Android físico por USB (recomendado en este entorno):
+## Autor
 
-1. Activa opciones de desarrollador y depuración USB en el móvil.
-2. Conecta por USB y acepta el prompt de confianza.
-3. Verifica el dispositivo:
+- Markel Román
 
-```bash
-source ~/.bashrc
-adb devices
-```
+---
 
-4. Lanza la app:
+Si este proyecto te resulta util, una estrella ayuda mucho al crecimiento del repositorio.
 
-```bash
-npm run mobile:dev:android:usb
-```
-
-Este script crea un túnel `adb reverse` para que el móvil use `http://localhost:9002` hacia tu servidor Next local.
-
-3. Para iOS (solo en macOS con Xcode):
-
-```bash
-npm run mobile:dev:ios
-```
-
-Comandos de mantenimiento:
-
-```bash
-npm run cap:sync
-npm run cap:android
-npm run cap:ios
-```
-
-Notas importantes:
-
-- En emulador Android, 10.0.2.2 apunta al localhost de tu máquina.
-- En Android físico por USB puedes evitar IP LAN con `adb reverse`; por WiFi sí necesitarás IP LAN en CAP_SERVER_URL.
-- iOS requiere macOS + Xcode para compilar y ejecutar la app nativa.
-- Si aparece ERR_SDK_NOT_FOUND en Android, instala Android Studio y configura ANDROID_HOME/ANDROID_SDK_ROOT.
-
-## Despliegue gratuito recomendado
-
-La combinación más razonable para coste cero es:
-
-- Vercel gratis para el frontend Next.js.
-- Supabase gratis para autenticación y base de datos.
-
-Pasos:
-
-1. Sube el repositorio a GitHub.
-2. Crea el proyecto de Supabase y ejecuta [supabase/schema.sql](supabase/schema.sql).
-3. Importa el proyecto en Vercel.
-4. Añade en Vercel las variables NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.
-5. Despliega.
-
-## Qué falta para una versión comercial
-
-- Invitaciones y recordatorios por canales reales como email o WhatsApp.
-- Sincronización multiusuario sobre una misma deuda compartida entre dos cuentas reales.
-- Recuperación de contraseña, perfiles y onboarding.
-- Reglas de privacidad, analítica y logs.
-- Tests end-to-end y monitorización.
-
-## Siguiente evolución recomendada
-
-Si quieres convertir esta base en producto serio, la siguiente iteración lógica es:
-
-1. Añadir recuperación de contraseña y edición de perfil.
-2. Diseñar deudas compartidas entre usuarios invitados y no sólo contactos manuales.
-3. Añadir notificaciones reales por email o WhatsApp.
