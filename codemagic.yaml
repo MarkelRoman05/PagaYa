@@ -3,7 +3,7 @@ workflows:
     name: iOS Simulator Build (BrowserStack)
     max_build_duration: 60
     environment:
-      node: 20
+      node: 22
       xcode: latest
       vars:
         NEXT_STATIC_EXPORT: "true"
