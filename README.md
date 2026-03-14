@@ -1,7 +1,7 @@
 # PagaYa
 
 <p align="center">
-	Plataforma para gestionar deudas entre amigos, con autenticacion real, persistencia en la nube y experiencia web + movil.
+	Plataforma para gestionar deudas entre amigos, con autenticación real, persistencia en la nube y experiencia web + móvil.
 </p>
 
 <p align="center">
@@ -15,48 +15,48 @@
 
 ## Tabla de contenidos
 
-- [Vision del producto](#vision-del-producto)
+- [Visión del producto](#vision-del-producto)
 - [Funcionalidades principales](#funcionalidades-principales)
-- [Stack tecnologico](#stack-tecnologico)
+- [Stack tecnológico](#stack-tecnologico)
 - [Arquitectura](#arquitectura)
 - [Demo y despliegue](#demo-y-despliegue)
 - [Empezar en local](#empezar-en-local)
 - [Variables de entorno](#variables-de-entorno)
 - [Scripts disponibles](#scripts-disponibles)
-- [Build movil con Capacitor](#build-movil-con-capacitor)
+- [Build móvil con Capacitor](#build-movil-con-capacitor)
 - [Modelo de datos](#modelo-de-datos)
 - [Roadmap](#roadmap)
 - [Contribuir](#contribuir)
 
-## Vision del producto
+## Visión del producto
 
-PagaYa resuelve un problema cotidiano: organizar pagos entre amigos sin friccion, sin discusiones y sin perder trazabilidad.
+PagaYa resuelve un problema cotidiano: organizar pagos entre amigos sin fricción, sin discusiones y sin perder trazabilidad.
 
-La app esta pensada para un uso real en produccion:
+La app está pensada para un uso real en producción:
 
-- Autenticacion por email con Supabase.
-- Persistencia cloud con politicas RLS.
+- Autenticación por email con Supabase.
+- Persistencia cloud con políticas RLS.
 - Flujo de invitaciones entre usuarios reales.
-- Confirmacion de pagos entre las dos partes.
-- Historial de actividad y gestion de sesiones por dispositivo.
-- Experiencia responsive web y empaquetado movil nativo (Android/iOS) con Capacitor.
+- Confirmación de pagos entre las dos partes.
+- Historial de actividad y gestión de sesiones por dispositivo.
+- Experiencia responsive web y empaquetado móvil nativo (Android/iOS) con Capacitor.
 
 ## Funcionalidades principales
 
-- Registro e inicio de sesion por email.
+- Registro e inicio de sesión por email.
 - Perfil de usuario con username y avatar.
 - Invitaciones de amistad por username.
-- Aceptacion/rechazo de invitaciones entrantes.
-- Alta de deudas con descripcion, importe y tipo.
+- Aceptación/rechazo de invitaciones entrantes.
+- Alta de deudas con descripción, importe y tipo.
 - Estados de deuda: pendiente, pago solicitado, pagada.
-- Confirmacion de pago por la otra parte para evitar cierres unilaterales.
-- Eliminacion de amistades y limpieza de deudas relacionadas.
+- Confirmación de pago por la otra parte para evitar cierres unilaterales.
+- Eliminación de amistades y limpieza de deudas relacionadas.
 - Dashboard con resumen de lo que te deben y lo que debes.
 - Historial para seguimiento de movimientos.
-- Gestion de sesiones activas por dispositivo.
+- Gestión de sesiones activas por dispositivo.
 - Cambio de tema visual (claro/oscuro).
 
-## Stack tecnologico
+## Stack tecnológico
 
 ### Frontend
 
@@ -73,7 +73,7 @@ La app esta pensada para un uso real en produccion:
 - Supabase Storage (bucket de avatares)
 - RLS (Row Level Security)
 
-### Movil
+### Móvil
 
 - Capacitor 8
 - Android Studio / Xcode para builds nativos
@@ -95,9 +95,9 @@ Supabase
 ## Demo y despliegue
 
 - Web (Vercel): recomendado para entorno productivo.
-- Movil (Capacitor): export estatico + sync a plataformas nativas.
+- Móvil (Capacitor): export estático + sync a plataformas nativas.
 
-Si vas a publicar la demo, añade aqui tus enlaces:
+Si vas a publicar la demo, añade aquí tus enlaces:
 
 - URL web: https://pagaya.vercel.app/
 - Android: https://github.com/MarkelRoman05/PagaYa/releases/tag/android-latest
@@ -144,18 +144,18 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=tu-clave-publica-anon
 ### Desarrollo y calidad
 
 - `npm run dev`: servidor local en puerto 9002 con Turbopack.
-- `npm run build`: build de produccion.
-- `npm run start`: arranque de build en produccion.
-- `npm run lint`: analisis de lint.
+- `npm run build`: build de producción.
+- `npm run start`: arranque de build en producción.
+- `npm run lint`: análisis de lint.
 - `npm run typecheck`: chequeo de tipos con TypeScript.
 
-### Capacitor y movil
+### Capacitor y móvil
 
 - `npm run cap:sync`: sincroniza assets web con plataformas nativas.
 - `npm run cap:android`: abre proyecto Android en Android Studio.
 - `npm run cap:ios`: abre proyecto iOS en Xcode.
-- `npm run mobile:build:web`: build estatico para contenedor movil.
-- `npm run mobile:sync:android`: sincroniza build estatico en Android.
+- `npm run mobile:build:web`: build estático para contenedor móvil.
+- `npm run mobile:sync:android`: sincroniza build estático en Android.
 - `npm run mobile:apk:debug`: genera APK debug en Android.
 - `npm run mobile:dev:android`: ejecuta Android contra servidor local (emulador).
 - `npm run mobile:dev:android:usb`: ejecuta Android por USB con `adb reverse`.
@@ -167,9 +167,9 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=tu-clave-publica-anon
 - `npm run release:minor`
 - `npm run release:major`
 
-## Build movil con Capacitor
+## Build móvil con Capacitor
 
-Flujo rapido para Android (debug):
+Flujo rápido para Android (debug):
 
 ```bash
 npm run mobile:apk:debug
@@ -177,7 +177,7 @@ npm run mobile:apk:debug
 
 Este comando:
 
-1. Genera build web estatico.
+1. Genera build web estático.
 2. Sincroniza con Android.
 3. Ejecuta Gradle para construir la APK debug.
 
@@ -190,15 +190,15 @@ Entidades principales en Supabase:
 - `debts`: deudas con estado y trazabilidad de pago.
 - `user_device_sessions`: sesiones activas por dispositivo.
 
-El esquema SQL de referencia esta en `supabase/schema.sql`.
+El esquema SQL de referencia está en `supabase/schema.sql`.
 
 ## Roadmap
 
 - Notificaciones push para solicitudes y confirmaciones.
-- Division automatica de gastos en grupos.
-- Exportacion de historico (CSV/PDF).
-- Multi-moneda y conversion automatica.
-- Analitica de gastos por categorias.
+- División automática de gastos en grupos.
+- Exportación de histórico (CSV/PDF).
+- Multi-moneda y conversión automática.
+- Analítica de gastos por categorías.
 
 ## Contribuir
 
@@ -214,5 +214,5 @@ El esquema SQL de referencia esta en `supabase/schema.sql`.
 
 ---
 
-Si este proyecto te resulta util, una estrella ayuda mucho al crecimiento del repositorio.
+Si este proyecto te resulta útil, una estrella ayuda mucho al crecimiento del repositorio.
 
