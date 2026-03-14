@@ -1,0 +1,97 @@
+name: Android Latest APK
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish-apk:
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE_PATH: android-signing-key.jks
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Android platforms and build-tools
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Decode keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$KEYSTORE_PATH"
+
+      - name: Build Android APK (release unsigned)
+        run: |
+          npm run mobile:build:web
+          npm run mobile:sync:android
+          cd android
+          ./gradlew --no-daemon assembleRelease
+
+      - name: Sign release APK
+        run: |
+          UNSIGNED_APK="android/app/build/outputs/apk/release/app-release-unsigned.apk"
+          ALIGNED_APK="android/app/build/outputs/apk/release/app-release-aligned.apk"
+          SIGNED_APK="android/app/build/outputs/apk/release/app-release-signed.apk"
+
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -name zipalign | sort -V | tail -1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)"
+
+          "$ZIPALIGN" -p 4 "$UNSIGNED_APK" "$ALIGNED_APK"
+
+          "$APKSIGNER" sign \
+            --ks "$KEYSTORE_PATH" \
+            --ks-key-alias "${{ secrets.ANDROID_KEY_ALIAS }}" \
+            --ks-pass pass:"${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+            --key-pass pass:"${{ secrets.ANDROID_KEY_PASSWORD }}" \
+            --out "$SIGNED_APK" \
+            "$ALIGNED_APK"
+
+          "$APKSIGNER" verify "$SIGNED_APK"
+
+      - name: Prepare APK artifact
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release-signed.apk dist/PagaYa-latest-release.apk
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PagaYa-latest-release-apk
+          path: dist/PagaYa-latest-release.apk
+          retention-days: 30
+
+      - name: Publish or update GitHub release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: android-latest
+          name: PagaYa Android Latest (Signed Release)
+          body: APK de Android release firmada y generada automaticamente desde main.
+          allowUpdates: true
+          removeArtifacts: true
+          replacesArtifacts: true
+          artifacts: dist/PagaYa-latest-release.apk

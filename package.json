@@ -16,7 +16,10 @@
     "mobile:apk:debug": "npm run mobile:build:web && npm run mobile:sync:android && cd android && ./gradlew --no-daemon assembleDebug",
     "mobile:dev:android": "CAP_SERVER_URL=http://10.0.2.2:9002 npx cap run android",
     "mobile:dev:android:usb": "source ~/.bashrc && adb reverse tcp:9002 tcp:9002 && CAP_SERVER_URL=http://localhost:9002 npx cap run android",
-    "mobile:dev:ios": "CAP_SERVER_URL=http://localhost:9002 npx cap run ios"
+    "mobile:dev:ios": "CAP_SERVER_URL=http://localhost:9002 npx cap run ios",
+    "release:patch": "bash ./scripts/release.sh patch",
+    "release:minor": "bash ./scripts/release.sh minor",
+    "release:major": "bash ./scripts/release.sh major"
   },
   "dependencies": {
     "@capacitor/android": "^8.2.0",
