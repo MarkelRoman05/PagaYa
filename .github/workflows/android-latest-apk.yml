@@ -14,6 +14,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       KEYSTORE_PATH: android-signing-key.jks
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
 
     steps:
       - name: Checkout
@@ -44,6 +46,17 @@ jobs:
 
       - name: Decode keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$KEYSTORE_PATH"
+
+      - name: Validate required secrets
+        run: |
+          if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
+            echo "Falta el secret NEXT_PUBLIC_SUPABASE_URL"
+            exit 1
+          fi
+          if [ -z "$NEXT_PUBLIC_SUPABASE_ANON_KEY" ]; then
+            echo "Falta el secret NEXT_PUBLIC_SUPABASE_ANON_KEY"
+            exit 1
+          fi
 
       - name: Build Android APK (release unsigned)
         run: |
