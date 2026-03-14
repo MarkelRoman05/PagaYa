@@ -105,8 +105,8 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           tag: android-latest
-          name: PagaYa Android Latest (Signed Release)
-          body: APK de Android release firmada y generada automaticamente desde main.
+          name: PagaYa Android Latest
+          body: APK de Android de la app de PagaYa.
           allowUpdates: true
           removeArtifacts: true
           replacesArtifacts: true
