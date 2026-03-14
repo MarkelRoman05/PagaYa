@@ -10,9 +10,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Clock3, Laptop, LogOut, Moon, RefreshCw, Smartphone, Sun } from 'lucide-react';
+import { Clock3, Laptop, LogOut, Moon, RefreshCw, Smartphone, Sun, LoaderCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import type { DeviceSession, Theme } from '@/lib/types';
+import { AppLoadingScreen } from '@/components/ui/app-loading-screen';
 
 function formatSessionDate(value: string | undefined) {
   if (!value) {
@@ -237,7 +238,7 @@ export default function ProfilePage() {
   };
 
   if (!isReady) {
-    return null;
+    return <AppLoadingScreen title="Cargando perfil" subtitle="Recuperando tu cuenta y dispositivos..." />;
   }
 
   return (
@@ -312,6 +313,7 @@ export default function ProfilePage() {
                   </div>
 
                   <Button type="submit" disabled={isSubmittingProfile} className="w-full md:w-auto">
+                    {isSubmittingProfile ? <LoaderCircle className="w-4 h-4 mr-2 animate-spin" /> : null}
                     {isSubmittingProfile ? 'Guardando...' : 'Guardar cambios'}
                   </Button>
                 </form>
@@ -418,7 +420,9 @@ export default function ProfilePage() {
                                 <Badge variant="outline">Activa</Badge>
                               </div>
                               <p className="text-sm text-muted-foreground">
-                                {deviceSession.browser} · {deviceSession.os}
+                                {deviceSession.deviceLabel.includes('·')
+                                  ? `${deviceSession.browser} · ${deviceSession.os}`
+                                  : deviceSession.os}
                               </p>
                               <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
                                 <span className="inline-flex items-center gap-1">
@@ -472,6 +476,7 @@ export default function ProfilePage() {
                   </div>
 
                   <Button type="submit" disabled={isSubmittingPassword} className="w-full md:w-auto">
+                    {isSubmittingPassword ? <LoaderCircle className="w-4 h-4 mr-2 animate-spin" /> : null}
                     {isSubmittingPassword ? 'Actualizando...' : 'Actualizar contraseña'}
                   </Button>
                 </form>
@@ -492,7 +497,7 @@ export default function ProfilePage() {
                   variant="destructive"
                   className="w-full md:w-auto"
                 >
-                  <LogOut className="w-4 h-4 mr-2" />
+                  {isLoggingOut ? <LoaderCircle className="w-4 h-4 mr-2 animate-spin" /> : <LogOut className="w-4 h-4 mr-2" />}
                   {isLoggingOut ? 'Cerrando sesión...' : 'Cerrar sesión'}
                 </Button>
               </CardContent>

@@ -45,6 +45,82 @@ npm run build
 npm run typecheck
 ```
 
+## App móvil con Capacitor (sin reescribir frontend)
+
+Este proyecto ya está preparado para ejecutarse como app móvil en Android/iOS usando Capacitor y reutilizando la UI responsive de Next.js.
+
+Modo APK autonomo (sin localhost ni npm run dev):
+
+```bash
+npm run mobile:apk:debug
+```
+
+Esto genera y empaqueta la web estática en `out/`, sincroniza Capacitor usando `CAP_WEB_DIR=out` y compila el APK debug.
+
+APK resultante:
+
+- `android/app/build/outputs/apk/debug/app-debug.apk`
+
+Cómo funciona en este repo:
+
+- Capacitor crea una app nativa contenedora (carpetas android/ e ios/).
+- En desarrollo, la app carga tu servidor Next local (live reload) usando la variable CAP_SERVER_URL.
+- No necesitas export estático para este flujo.
+
+Flujo de desarrollo:
+
+1. Arranca Next.js:
+
+```bash
+npm run dev
+```
+
+2. En otra terminal, ejecuta Android (emulador):
+
+```bash
+npm run mobile:dev:android
+```
+
+Android físico por USB (recomendado en este entorno):
+
+1. Activa opciones de desarrollador y depuración USB en el móvil.
+2. Conecta por USB y acepta el prompt de confianza.
+3. Verifica el dispositivo:
+
+```bash
+source ~/.bashrc
+adb devices
+```
+
+4. Lanza la app:
+
+```bash
+npm run mobile:dev:android:usb
+```
+
+Este script crea un túnel `adb reverse` para que el móvil use `http://localhost:9002` hacia tu servidor Next local.
+
+3. Para iOS (solo en macOS con Xcode):
+
+```bash
+npm run mobile:dev:ios
+```
+
+Comandos de mantenimiento:
+
+```bash
+npm run cap:sync
+npm run cap:android
+npm run cap:ios
+```
+
+Notas importantes:
+
+- En emulador Android, 10.0.2.2 apunta al localhost de tu máquina.
+- En Android físico por USB puedes evitar IP LAN con `adb reverse`; por WiFi sí necesitarás IP LAN en CAP_SERVER_URL.
+- iOS requiere macOS + Xcode para compilar y ejecutar la app nativa.
+- Si aparece ERR_SDK_NOT_FOUND en Android, instala Android Studio y configura ANDROID_HOME/ANDROID_SDK_ROOT.
+
 ## Despliegue gratuito recomendado
 
 La combinación más razonable para coste cero es:

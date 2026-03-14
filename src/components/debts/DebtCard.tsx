@@ -5,7 +5,7 @@ import { Debt, Friend } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, Trash2, Clock, User, Euro, XCircle, PenLine } from 'lucide-react';
+import { CheckCircle2, Trash2, Clock, User, Euro, XCircle, PenLine, LoaderCircle } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { usePagaYa } from '@/hooks/use-pagaya';
@@ -246,7 +246,7 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
                       onClick={handleMarkAsPaid}
                       disabled={isUpdatingStatus || isRejectingPaymentRequest || isDeleting}
                     >
-                      <CheckCircle2 className="w-4 h-4 mr-2" />
+                      {isUpdatingStatus ? <LoaderCircle className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
                       {isUpdatingStatus ? 'Confirmando...' : 'Confirmar pago'}
                     </Button>
                     <Button
@@ -256,7 +256,7 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
                       onClick={handleRejectPaymentRequest}
                       disabled={isUpdatingStatus || isRejectingPaymentRequest || isDeleting || !onRejectPaymentRequest}
                     >
-                      <XCircle className="w-4 h-4 mr-2" />
+                      {isRejectingPaymentRequest ? <LoaderCircle className="w-4 h-4 mr-2 animate-spin" /> : <XCircle className="w-4 h-4 mr-2" />}
                       {isRejectingPaymentRequest ? 'Rechazando...' : 'Rechazar'}
                     </Button>
                   </div>
@@ -276,7 +276,7 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
                     onClick={handleMarkAsPaid}
                     disabled={isUpdatingStatus || isRejectingPaymentRequest || isDeleting || (!canRequestConfirmation && !canConfirmPaymentDirectly)}
                   >
-                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                    {isUpdatingStatus ? <LoaderCircle className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
                     {actionLabel}
                   </Button>
                 </div>
@@ -307,6 +307,7 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
                         disabled={isDeleting}
                         className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                       >
+                        {isDeleting ? <LoaderCircle className="w-4 h-4 mr-2 animate-spin" /> : null}
                         {isDeleting ? 'Eliminando...' : 'Eliminar'}
                       </AlertDialogAction>
                     </AlertDialogFooter>

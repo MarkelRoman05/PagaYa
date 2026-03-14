@@ -23,10 +23,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ChevronLeft, Save } from "lucide-react";
+import { ChevronLeft, LoaderCircle, Save } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
+import { AppLoadingScreen, InlineLoadingNotice } from '@/components/ui/app-loading-screen';
 
 export default function NewDebt() {
   const router = useRouter();
@@ -105,7 +106,9 @@ export default function NewDebt() {
     }
   };
 
-  if (!isReady) return null;
+  if (!isReady) {
+    return <AppLoadingScreen title="Cargando formulario" subtitle="Preparando tus contactos para registrar la deuda..." />;
+  }
 
   return (
     <ProtectedRoute>
@@ -123,11 +126,7 @@ export default function NewDebt() {
             <h1 className="mt-2 text-2xl font-bold sm:text-3xl">Nueva deuda</h1>
           </div>
 
-          {isLoadingData && (
-            <div className="mb-6 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground">
-              Cargando tus contactos disponibles...
-            </div>
-          )}
+          {isLoadingData && <InlineLoadingNotice message="Cargando tus contactos disponibles..." />}
 
           <form onSubmit={handleSubmit}>
             <Card className="shadow-lg border-none">
@@ -277,7 +276,7 @@ export default function NewDebt() {
                   disabled={friends.length === 0 || isSubmitting}
                   className="w-full h-14 rounded-xl text-lg font-bold shadow-lg shadow-primary/20 disabled:shadow-none"
                 >
-                  <Save className="w-5 h-5 mr-2" />
+                  {isSubmitting ? <LoaderCircle className="w-5 h-5 mr-2 animate-spin" /> : <Save className="w-5 h-5 mr-2" />}
                   {isSubmitting ? "Guardando..." : "Registrar deuda"}
                 </Button>
               </CardFooter>

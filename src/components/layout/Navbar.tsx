@@ -12,6 +12,14 @@ export function Navbar() {
   const pathname = usePathname();
   const { user } = usePagaYa();
 
+  const normalizePath = (value: string) => {
+    if (!value) return '/';
+    if (value === '/') return value;
+    return value.replace(/\/+$/, '');
+  };
+
+  const currentPath = normalizePath(pathname);
+
   const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
   const username =
     typeof userMetadata.username === "string"
@@ -31,8 +39,11 @@ export function Navbar() {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85 md:top-0 md:bottom-auto md:h-16 md:border-b md:border-t-0">
-      <div className="container mx-auto flex h-full max-w-6xl items-center justify-between px-2 sm:px-4">
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85 md:top-0 md:bottom-auto md:h-16 md:border-b md:border-t-0"
+      style={{ paddingBottom: 'var(--safe-area-bottom)' }}
+    >
+      <div className="container mx-auto flex h-16 max-w-6xl items-center justify-between px-2 sm:px-4 md:h-full">
         <Link
           href="/dashboard"
           aria-label="Ir al inicio"
@@ -54,7 +65,7 @@ export function Navbar() {
         <div className="flex h-full w-full items-stretch justify-between gap-1 md:w-auto md:justify-around md:gap-6 lg:gap-8">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href;
+            const isActive = currentPath === normalizePath(item.href);
             return (
               <Link
                 key={item.href}

@@ -12,6 +12,7 @@ import { ArrowUpRight, ArrowDownLeft, Plus, RefreshCw, Wallet } from 'lucide-rea
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { AppLoadingScreen, InlineLoadingNotice } from '@/components/ui/app-loading-screen';
 
 export default function Dashboard() {
   const [isNewDebtOpen, setIsNewDebtOpen] = useState(false);
@@ -41,7 +42,9 @@ export default function Dashboard() {
     }
   };
 
-  if (!isReady) return null;
+  if (!isReady) {
+    return <AppLoadingScreen title="Cargando panel" subtitle="Estamos preparando tus deudas y movimientos..." />;
+  }
 
   return (
     <ProtectedRoute>
@@ -62,11 +65,7 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {isLoadingData && (
-          <div className="mb-6 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground">
-            Sincronizando tus datos con Supabase...
-          </div>
-        )}
+        {isLoadingData && <InlineLoadingNotice message="Sincronizando tus datos con Supabase..." />}
 
         <section className="mb-8 grid gap-4 md:grid-cols-2">
           <Card className="bg-primary text-white overflow-hidden relative">

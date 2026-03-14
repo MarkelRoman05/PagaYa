@@ -168,13 +168,17 @@ function mapDebtRow(row: DebtRow): Debt {
 }
 
 function mapDeviceSessionRow(row: DeviceSessionRow): DeviceSession {
+  const userAgent = row.user_agent ?? '';
+  const browser = row.browser?.trim() ? row.browser : getBrowserName(userAgent);
+  const os = row.os?.trim() ? row.os : getOsName(userAgent);
+
   return {
     id: row.id,
     userId: row.user_id,
     sessionId: row.session_id,
-    deviceLabel: row.device_label,
-    browser: row.browser,
-    os: row.os,
+    deviceLabel: getDeviceLabel(browser, os, userAgent, row.device_label),
+    browser,
+    os,
     userAgent: row.user_agent ?? undefined,
     signedInAt: row.signed_in_at,
     lastSeenAt: row.last_seen_at,
@@ -226,23 +230,31 @@ function getSessionIdentifier(session: Session | null) {
 function getBrowserName(userAgent: string) {
   const normalizedUserAgent = userAgent.toLowerCase();
 
-  if (normalizedUserAgent.includes('edg/')) {
+  if (normalizedUserAgent.includes('edgios/') || normalizedUserAgent.includes('edga/') || normalizedUserAgent.includes('edg/')) {
     return 'Microsoft Edge';
   }
 
-  if (normalizedUserAgent.includes('opr/') || normalizedUserAgent.includes('opera')) {
+  if (normalizedUserAgent.includes('opios/') || normalizedUserAgent.includes('opr/') || normalizedUserAgent.includes('opera')) {
     return 'Opera';
   }
 
-  if (normalizedUserAgent.includes('chrome/') && !normalizedUserAgent.includes('edg/')) {
+  if (normalizedUserAgent.includes('samsungbrowser/')) {
+    return 'Samsung Internet';
+  }
+
+  if (normalizedUserAgent.includes('crios/') || (normalizedUserAgent.includes('chrome/') && !normalizedUserAgent.includes('edg/'))) {
     return 'Chrome';
   }
 
-  if (normalizedUserAgent.includes('firefox/')) {
+  if (normalizedUserAgent.includes('fxios/') || normalizedUserAgent.includes('firefox/')) {
     return 'Firefox';
   }
 
-  if (normalizedUserAgent.includes('safari/') && !normalizedUserAgent.includes('chrome/')) {
+  if (
+    normalizedUserAgent.includes('safari/')
+    && !normalizedUserAgent.includes('chrome/')
+    && !normalizedUserAgent.includes('crios/')
+  ) {
     return 'Safari';
   }
 
@@ -256,7 +268,12 @@ function getOsName(userAgent: string) {
     return 'Android';
   }
 
-  if (normalizedUserAgent.includes('iphone') || normalizedUserAgent.includes('ipad') || normalizedUserAgent.includes('ios')) {
+  if (normalizedUserAgent.includes('iphone') || normalizedUserAgent.includes('ipad') || normalizedUserAgent.includes('ipod') || normalizedUserAgent.includes('ios')) {
+    return 'iOS';
+  }
+
+  // iPadOS 13+ puede reportarse como "Macintosh" pero con token "Mobile".
+  if (normalizedUserAgent.includes('macintosh') && normalizedUserAgent.includes('mobile')) {
     return 'iOS';
   }
 
@@ -275,15 +292,37 @@ function getOsName(userAgent: string) {
   return 'Sistema desconocido';
 }
 
-function getDeviceLabel(browser: string, os: string, userAgent: string) {
+function getDeviceLabel(browser: string, os: string, userAgent: string, fallbackLabel?: string) {
   const normalizedUserAgent = userAgent.toLowerCase();
+  const isTablet = normalizedUserAgent.includes('ipad')
+    || normalizedUserAgent.includes('tablet')
+    || (normalizedUserAgent.includes('android') && !normalizedUserAgent.includes('mobile'));
+  const isPhoneLike = normalizedUserAgent.includes('mobile')
+    || normalizedUserAgent.includes('iphone')
+    || normalizedUserAgent.includes('ipod')
+    || normalizedUserAgent.includes('android');
 
-  if (normalizedUserAgent.includes('mobile') || normalizedUserAgent.includes('iphone') || normalizedUserAgent.includes('android')) {
-    return `Movil · ${browser}`;
+  if (os === 'Android' || os === 'iOS') {
+    // Detecta WebView nativo (app Capacitor).
+    // Android WebView añade "; wv)" y/o "Version/4.0" al UA; iOS WKWebView no incluye CriOS ni FxiOS.
+    const isNativeApp = normalizedUserAgent.includes('; wv)')
+      || (normalizedUserAgent.includes('version/4.0') && normalizedUserAgent.includes('android'));
+    if (isNativeApp) {
+      return isTablet ? `Tablet ${os}` : os;
+    }
+    return isTablet ? `Tablet ${os} · ${browser}` : `${os} · ${browser}`;
   }
 
-  if (normalizedUserAgent.includes('ipad') || normalizedUserAgent.includes('tablet')) {
-    return `Tablet · ${browser}`;
+  if (isTablet) {
+    return os === 'Sistema desconocido' ? `Tablet · ${browser}` : `Tablet · ${browser} en ${os}`;
+  }
+
+  if (isPhoneLike) {
+    return `Móvil · ${browser}`;
+  }
+
+  if (os === 'Sistema desconocido') {
+    return fallbackLabel?.trim() || `Ordenador · ${browser}`;
   }
 
   return `Ordenador · ${browser} en ${os}`;

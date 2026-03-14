@@ -1,10 +1,12 @@
 "use client"
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Wallet, ArrowRight, ShieldCheck, Zap, Users2, LogOut, Moon, Sun, ChevronDown } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Wallet, ArrowRight, ShieldCheck, Zap, Users2, LogOut, Moon, Sun, ChevronDown, LoaderCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { AppLoadingScreen } from '@/components/ui/app-loading-screen';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -20,14 +22,34 @@ import { usePagaYa } from '@/hooks/use-pagaya';
 import type { Theme } from '@/lib/types';
 
 export default function Home() {
+  const router = useRouter();
   const { isAuthenticated, user, signOut, theme, setTheme } = usePagaYa();
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isChangingTheme, setIsChangingTheme] = useState(false);
+  const [isNativeApp, setIsNativeApp] = useState<boolean | null>(null);
   const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
   const username = typeof userMetadata.username === 'string' ? userMetadata.username.trim() : '';
   const avatarUrl = typeof userMetadata.avatar_url === 'string' ? userMetadata.avatar_url.trim() : '';
   const sessionName = username || user?.email?.split('@')[0] || 'usuario';
   const avatarLetter = sessionName.charAt(0).toUpperCase();
+
+  useEffect(() => {
+    const hasCapacitor = typeof window !== 'undefined' && 'Capacitor' in window;
+    setIsNativeApp(hasCapacitor);
+  }, []);
+
+  useEffect(() => {
+    if (!isNativeApp) {
+      return;
+    }
+
+    if (!isAuthenticated) {
+      router.replace('/auth');
+      return;
+    }
+
+    router.replace('/dashboard');
+  }, [isAuthenticated, isNativeApp, router]);
 
   const handleSignOut = async () => {
     setIsSigningOut(true);
@@ -56,6 +78,14 @@ export default function Home() {
       setIsChangingTheme(false);
     }
   };
+
+  if (isNativeApp === null) {
+    return <AppLoadingScreen title="Iniciando PagaYa" subtitle="Preparando la experiencia movil..." />;
+  }
+
+  if (isNativeApp) {
+    return <AppLoadingScreen title="Redirigiendo" subtitle="Comprobando tu sesion..." />;
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -126,7 +156,7 @@ export default function Home() {
                     }}
                     className="cursor-pointer rounded-md py-2 font-medium text-rose-700 dark:text-rose-400 data-[highlighted]:bg-rose-500/15 data-[highlighted]:text-rose-700 dark:data-[highlighted]:text-rose-300"
                   >
-                    <LogOut className="h-4 w-4 shrink-0" />
+                    {isSigningOut ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin" /> : <LogOut className="h-4 w-4 shrink-0" />}
                     <span className="ml-1">{isSigningOut ? 'Cerrando sesión...' : 'Cerrar sesión'}</span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>

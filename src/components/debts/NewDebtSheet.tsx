@@ -14,9 +14,10 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { ChevronsUpDown, Save } from "lucide-react";
+import { ChevronsUpDown, Save, LoaderCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { InlineLoadingNotice } from '@/components/ui/app-loading-screen';
 
 interface NewDebtDialogProps {
   open: boolean;
@@ -176,9 +177,10 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
         </DialogHeader>
 
         {isLoadingData && (
-          <div className="rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground">
-            Cargando tus contactos disponibles...
-          </div>
+          <InlineLoadingNotice
+            message="Cargando tus contactos disponibles..."
+            className="mb-0 rounded-lg px-3 py-2 text-xs"
+          />
         )}
 
         <form
@@ -425,7 +427,7 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
           disabled={friends.length === 0 || isSubmitting}
           className="w-full h-11 rounded-lg text-base font-semibold shadow-lg shadow-primary/20 disabled:shadow-none mt-4"
         >
-          <Save className="w-4 h-4 mr-2" />
+          {isSubmitting ? <LoaderCircle className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
           {isSubmitting ? "Guardando..." : "Registrar deuda"}
         </Button>
       </DialogContent>

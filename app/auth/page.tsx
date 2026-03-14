@@ -12,16 +12,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
+import { AppLoadingScreen } from '@/components/ui/app-loading-screen';
 
 function AuthPageFallback() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-6">
-      <div className="flex flex-col items-center gap-3 text-muted-foreground">
-        <LoaderCircle className="w-8 h-8 animate-spin text-primary" />
-        <p>Preparando acceso...</p>
-      </div>
-    </div>
-  );
+  return <AppLoadingScreen title="Preparando acceso" subtitle="Conectando con tu cuenta segura..." />;
 }
 export default function AuthPage() {
   return (

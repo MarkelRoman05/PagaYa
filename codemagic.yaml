@@ -1,0 +1,39 @@
+workflows:
+  ios-simulator:
+    name: iOS Simulator Build (BrowserStack)
+    max_build_duration: 60
+    environment:
+      node: 20
+      xcode: latest
+      vars:
+        NEXT_STATIC_EXPORT: "true"
+        CAP_WEB_DIR: "out"
+    scripts:
+      - name: Install dependencies
+        script: npm ci
+
+      - name: Build Next.js static export
+        script: NEXT_STATIC_EXPORT=true npm run build
+
+      - name: Sync Capacitor iOS
+        script: CAP_WEB_DIR=out npx cap sync ios
+
+      - name: Build iOS simulator app
+        script: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -derivedDataPath ios/build \
+            -destination "generic/platform=iOS Simulator" \
+            build | xcpretty
+
+      - name: Package .app for BrowserStack
+        script: |
+          mkdir -p artifacts
+          zip -r artifacts/PagaYa-simulator.zip \
+            ios/build/Build/Products/Debug-iphonesimulator/App.app
+
+    artifacts:
+      - artifacts/PagaYa-simulator.zip

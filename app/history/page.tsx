@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import { AppLoadingScreen, InlineLoadingNotice } from '@/components/ui/app-loading-screen';
 
 export default function HistoryPage() {
   const { friends, debts, refreshData, removeDebt, isReady, isLoadingData } = usePagaYa();
@@ -33,7 +34,9 @@ export default function HistoryPage() {
     }
   };
 
-  if (!isReady) return null;
+  if (!isReady) {
+    return <AppLoadingScreen title="Cargando historial" subtitle="Preparando tus pagos completados..." />;
+  }
 
   return (
     <ProtectedRoute>
@@ -52,11 +55,7 @@ export default function HistoryPage() {
           </Button>
         </header>
 
-        {isLoadingData && (
-          <div className="mb-6 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground">
-            Sincronizando tu historial...
-          </div>
-        )}
+        {isLoadingData && <InlineLoadingNotice message="Sincronizando tu historial..." />}
 
         <div className="relative mb-8">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />

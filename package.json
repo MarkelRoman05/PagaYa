@@ -7,11 +7,22 @@
     "build": "NODE_ENV=production next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cap:sync": "npx cap sync",
+    "cap:android": "npx cap open android",
+    "cap:ios": "npx cap open ios",
+    "mobile:build:web": "NEXT_STATIC_EXPORT=true next build",
+    "mobile:sync:android": "CAP_WEB_DIR=out npx cap sync android",
+    "mobile:apk:debug": "npm run mobile:build:web && npm run mobile:sync:android && cd android && ./gradlew --no-daemon assembleDebug",
+    "mobile:dev:android": "CAP_SERVER_URL=http://10.0.2.2:9002 npx cap run android",
+    "mobile:dev:android:usb": "source ~/.bashrc && adb reverse tcp:9002 tcp:9002 && CAP_SERVER_URL=http://localhost:9002 npx cap run android",
+    "mobile:dev:ios": "CAP_SERVER_URL=http://localhost:9002 npx cap run ios"
   },
   "dependencies": {
+    "@capacitor/android": "^8.2.0",
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
+    "@capacitor/ios": "^8.2.0",
     "@hookform/resolvers": "^4.1.3",
     "@radix-ui/react-accordion": "^1.2.3",
     "@radix-ui/react-alert-dialog": "^1.1.6",

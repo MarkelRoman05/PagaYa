@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { UserPlus, Search, Mail, RefreshCw, User, Trash2 } from 'lucide-react';
+import { UserPlus, Search, Mail, RefreshCw, User, Trash2, LoaderCircle } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -22,6 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { AppLoadingScreen, InlineLoadingNotice } from '@/components/ui/app-loading-screen';
 
 export default function FriendsPage() {
   const { friends, invitations, sendInvitation, acceptInvitation, rejectInvitation, removeFriend, isReady, isLoadingData, refreshData, user } = usePagaYa();
@@ -216,7 +217,9 @@ export default function FriendsPage() {
     }
   };
 
-  if (!isReady) return null;
+  if (!isReady) {
+    return <AppLoadingScreen title="Cargando amigos" subtitle="Conectando con tu agenda compartida..." />;
+  }
 
   return (
     <ProtectedRoute>
@@ -241,11 +244,7 @@ export default function FriendsPage() {
           </div>
         </header>
 
-        {isLoadingData && (
-          <div className="mb-6 rounded-xl border bg-card px-4 py-3 text-sm text-muted-foreground">
-            Actualizando tu agenda de amigos...
-          </div>
-        )}
+        {isLoadingData && <InlineLoadingNotice message="Actualizando tu agenda de amigos..." />}
 
         {isAdding && (
           <Card className="mb-8 border-primary/20 bg-primary/5">
@@ -262,7 +261,10 @@ export default function FriendsPage() {
                     className="h-11 bg-background"
                   />
                 </div>
-                <Button type="submit" disabled={isSubmitting} className="h-11 w-full md:min-w-[220px] md:self-end">{isSubmitting ? 'Enviando...' : 'Enviar invitación'}</Button>
+                <Button type="submit" disabled={isSubmitting} className="h-11 w-full md:min-w-[220px] md:self-end">
+                  {isSubmitting ? <LoaderCircle className="w-4 h-4 mr-2 animate-spin" /> : null}
+                  {isSubmitting ? 'Enviando...' : 'Enviar invitación'}
+                </Button>
                 <p className="text-xs text-muted-foreground md:col-span-2">Busca a tus amigos por su usuario único.</p>
               </form>
             </CardContent>
@@ -322,6 +324,7 @@ export default function FriendsPage() {
                           disabled={deletingFriendId === friend.id}
                           className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                         >
+                          {deletingFriendId === friend.id ? <LoaderCircle className="w-4 h-4 mr-2 animate-spin" /> : null}
                           {deletingFriendId === friend.id ? 'Eliminando...' : 'Eliminar'}
                         </AlertDialogAction>
                       </AlertDialogFooter>
@@ -359,6 +362,7 @@ export default function FriendsPage() {
                         disabled={acceptingInvitationId === invitation.id}
                         className="flex-1"
                       >
+                        {acceptingInvitationId === invitation.id ? <LoaderCircle className="w-4 h-4 mr-2 animate-spin" /> : null}
                         {acceptingInvitationId === invitation.id ? 'Aceptando...' : 'Aceptar'}
                       </Button>
                       <Button
@@ -367,6 +371,7 @@ export default function FriendsPage() {
                         variant="outline"
                         className="flex-1"
                       >
+                        {rejectingInvitationId === invitation.id ? <LoaderCircle className="w-4 h-4 mr-2 animate-spin" /> : null}
                         {rejectingInvitationId === invitation.id ? 'Rechazando...' : 'Rechazar'}
                       </Button>
                     </div>
@@ -398,6 +403,7 @@ export default function FriendsPage() {
                       variant="outline"
                       className="w-full text-amber-700 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
                     >
+                      {cancelingInvitationId === invitation.id ? <LoaderCircle className="w-4 h-4 mr-2 animate-spin" /> : null}
                       {cancelingInvitationId === invitation.id ? 'Cancelando...' : 'Cancelar'}
                     </Button>
                   </CardContent>
