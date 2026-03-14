@@ -1,4 +1,40 @@
 workflows:
+  ios-browserstack-ipa:
+    name: iOS IPA (BrowserStack Real Device)
+    max_build_duration: 60
+    environment:
+      node: 22
+      xcode: latest
+      ios_signing:
+        distribution_type: development
+        bundle_identifier: com.markel.pagaya
+      vars:
+        NEXT_STATIC_EXPORT: "true"
+        CAP_WEB_DIR: "out"
+        XCODE_WORKSPACE: "ios/App/App.xcodeproj/project.xcworkspace"
+        XCODE_SCHEME: "App"
+    scripts:
+      - name: Install dependencies
+        script: npm ci
+
+      - name: Build Next.js static export
+        script: NEXT_STATIC_EXPORT=true npm run build
+
+      - name: Sync Capacitor iOS
+        script: CAP_WEB_DIR=out npx cap sync ios
+
+      - name: Apply provisioning profiles
+        script: xcode-project use-profiles
+
+      - name: Build IPA
+        script: |
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+
   ios-simulator:
     name: iOS Simulator Build (BrowserStack)
     max_build_duration: 60
