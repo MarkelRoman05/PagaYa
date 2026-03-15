@@ -5,7 +5,7 @@ import { Debt, Friend } from '@/lib/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, Trash2, Clock, User, Euro, XCircle, PenLine, LoaderCircle } from 'lucide-react';
+import { CheckCircle2, Trash2, Clock, User, XCircle, PenLine, LoaderCircle } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { usePagaYa } from '@/hooks/use-pagaya';
@@ -212,15 +212,16 @@ export function DebtCard({ debt, friend, onPaid, onRejectPaymentRequest, onDelet
               )}>
                 {formatCurrency(debt.amount)}
               </span>
-              <div className="mt-1 flex items-center gap-1 text-[12px] font-medium uppercase text-muted-foreground sm:justify-end">
+              <div className="mt-1 flex items-start gap-1 text-[12px] font-medium uppercase text-muted-foreground sm:justify-end">
                 <Clock className="w-3 h-3 shrink-0" />
-                <span>Creado el</span>
-                <span className="break-words">{formattedDateTime}</span>
+                <span className="break-words leading-tight text-left sm:text-right">Creado el {formattedDateTime}</span>
               </div>
               {isPaid && formattedPaidDateTime && (
-                <div className="mt-1 flex items-center gap-1 text-[12px] font-medium text-teal-600 dark:text-teal-400 sm:justify-end">
-                  <Euro className="w-3.5 h-3.5" aria-hidden="true" />
-                  <span className="break-words">CONFIRMADO EL PAGO EL {formattedPaidDateTime}</span>
+                <div className="mt-1 flex items-start gap-1 text-[12px] font-medium text-teal-600 dark:text-teal-400 sm:justify-end">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  <span className="break-words leading-tight text-left sm:text-right">
+                    Confirmado el pago el {formattedPaidDateTime}
+                  </span>
                 </div>
               )}
             </div>

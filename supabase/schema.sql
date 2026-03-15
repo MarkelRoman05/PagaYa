@@ -527,6 +527,257 @@ grant execute on function public.confirm_debt_payment(uuid) to authenticated;
 revoke all on function public.reject_debt_payment_request(uuid) from public;
 grant execute on function public.reject_debt_payment_request(uuid) to authenticated;
 
+create table if not exists public.user_notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  type text not null check (type in (
+    'invitation_received',
+    'invitation_accepted',
+    'invitation_rejected',
+    'debt_created',
+    'debt_payment_requested',
+    'debt_paid',
+    'debt_payment_rejected'
+  )),
+  title text not null,
+  message text not null,
+  metadata jsonb not null default '{}'::jsonb,
+  is_read boolean not null default false,
+  created_at timestamptz not null default timezone('utc', now()),
+  read_at timestamptz
+);
+
+create index if not exists user_notifications_user_created_idx
+  on public.user_notifications (user_id, created_at desc);
+
+create index if not exists user_notifications_user_unread_idx
+  on public.user_notifications (user_id, is_read, created_at desc);
+
+create or replace function public.create_user_notification(
+  target_user_id uuid,
+  notification_type text,
+  notification_title text,
+  notification_message text,
+  notification_metadata jsonb default '{}'::jsonb
+)
+returns void as $$
+declare
+  v_preferences jsonb;
+  v_web_enabled boolean;
+  v_app_enabled boolean;
+  v_global_web_enabled boolean;
+  v_global_app_enabled boolean;
+begin
+  if target_user_id is null then
+    return;
+  end if;
+
+  select
+    notification_preferences,
+    notifications_enabled_web,
+    notifications_enabled_app
+  into
+    v_preferences,
+    v_global_web_enabled,
+    v_global_app_enabled
+  from public.user_settings
+  where user_id = target_user_id;
+
+  if v_global_web_enabled is false and v_global_app_enabled is false then
+    return;
+  end if;
+
+  if v_preferences is not null then
+    v_web_enabled := coalesce((v_preferences -> notification_type ->> 'web')::boolean, true);
+    v_app_enabled := coalesce((v_preferences -> notification_type ->> 'app')::boolean, true);
+
+    if not v_web_enabled and not v_app_enabled then
+      return;
+    end if;
+  end if;
+
+  insert into public.user_notifications (
+    user_id,
+    type,
+    title,
+    message,
+    metadata
+  )
+  values (
+    target_user_id,
+    notification_type,
+    notification_title,
+    notification_message,
+    coalesce(notification_metadata, '{}'::jsonb)
+  );
+end;
+$$ language plpgsql security definer;
+
+create or replace function public.notify_on_friend_invitation_change()
+returns trigger as $$
+begin
+  if tg_op = 'INSERT' then
+    if new.status = 'pending' and new.to_user_id is not null then
+      perform public.create_user_notification(
+        new.to_user_id,
+        'invitation_received',
+        'Nueva invitación de amistad',
+        coalesce(new.inviter_name, 'Un usuario') || ' te ha enviado una invitación.',
+        jsonb_build_object(
+          'invitation_id', new.id,
+          'from_user_id', new.from_user_id,
+          'to_user_id', new.to_user_id
+        )
+      );
+    end if;
+
+    return new;
+  end if;
+
+  if tg_op = 'UPDATE' and old.status is distinct from new.status then
+    if new.status = 'accepted' then
+      perform public.create_user_notification(
+        new.from_user_id,
+        'invitation_accepted',
+        'Invitación aceptada',
+        coalesce(new.invited_name, 'Tu contacto') || ' ha aceptado tu invitación.',
+        jsonb_build_object(
+          'invitation_id', new.id,
+          'from_user_id', new.from_user_id,
+          'to_user_id', new.to_user_id
+        )
+      );
+    elsif new.status = 'rejected' then
+      perform public.create_user_notification(
+        new.from_user_id,
+        'invitation_rejected',
+        'Invitación rechazada',
+        coalesce(new.invited_name, 'Tu contacto') || ' ha rechazado tu invitación.',
+        jsonb_build_object(
+          'invitation_id', new.id,
+          'from_user_id', new.from_user_id,
+          'to_user_id', new.to_user_id
+        )
+      );
+    end if;
+  end if;
+
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create or replace function public.notify_on_debt_change()
+returns trigger as $$
+declare
+  v_creditor_id uuid;
+  v_debtor_id uuid;
+  v_creator_name text;
+  v_amount_label text;
+begin
+  v_creditor_id := case when new.type = 'owed_to_me' then new.user_id else new.other_user_id end;
+  v_debtor_id := case when new.type = 'owed_to_me' then new.other_user_id else new.user_id end;
+
+  if tg_op = 'INSERT' then
+    if new.other_user_id is not null then
+      select
+        coalesce(
+          nullif(trim((u.raw_user_meta_data->>'username')::text), ''),
+          nullif(trim((u.raw_user_meta_data->>'full_name')::text), ''),
+          split_part(u.email, '@', 1),
+          'Un usuario'
+        )
+      into v_creator_name
+      from auth.users u
+      where u.id = new.user_id;
+
+      v_amount_label := replace(to_char(new.amount, 'FM999999990.00'), '.', ',');
+
+      perform public.create_user_notification(
+        new.other_user_id,
+        'debt_created',
+        'Nueva deuda asignada',
+        coalesce(v_creator_name, 'Un usuario')
+          || ' ha registrado una deuda para ti de '
+          || v_amount_label
+          || '€ por "'
+          || new.description
+          || '".',
+        jsonb_build_object(
+          'debt_id', new.id,
+          'creator_user_id', new.user_id,
+          'creator_name', v_creator_name,
+          'other_user_id', new.other_user_id,
+          'amount', new.amount,
+          'description', new.description,
+          'type', new.type
+        )
+      );
+    end if;
+
+    return new;
+  end if;
+
+  if tg_op = 'UPDATE' then
+    if old.status is distinct from new.status and new.status = 'payment_requested' then
+      perform public.create_user_notification(
+        v_creditor_id,
+        'debt_payment_requested',
+        'Solicitud de confirmación de pago',
+        'Tienes una deuda pendiente de confirmar: ' || new.description,
+        jsonb_build_object(
+          'debt_id', new.id,
+          'status', new.status,
+          'type', new.type
+        )
+      );
+    elsif old.status is distinct from new.status and new.status = 'paid' then
+      perform public.create_user_notification(
+        v_debtor_id,
+        'debt_paid',
+        'Pago confirmado',
+        'Se ha confirmado el pago de la deuda: ' || new.description,
+        jsonb_build_object(
+          'debt_id', new.id,
+          'status', new.status,
+          'type', new.type
+        )
+      );
+    elsif old.status is distinct from new.status
+      and old.status = 'payment_requested'
+      and new.status = 'pending'
+      and new.payment_request_rejection_count > coalesce(old.payment_request_rejection_count, 0) then
+      perform public.create_user_notification(
+        v_debtor_id,
+        'debt_payment_rejected',
+        'Solicitud de pago rechazada',
+        'Tu solicitud de confirmar la deuda fue rechazada: ' || new.description,
+        jsonb_build_object(
+          'debt_id', new.id,
+          'status', new.status,
+          'type', new.type
+        )
+      );
+    end if;
+  end if;
+
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_friend_invitation_notify on public.friend_invitations;
+create trigger on_friend_invitation_notify
+after insert or update on public.friend_invitations
+for each row
+execute function public.notify_on_friend_invitation_change();
+
+drop trigger if exists on_debt_notify on public.debts;
+create trigger on_debt_notify
+after insert or update on public.debts
+for each row
+execute function public.notify_on_debt_change();
+
+revoke all on function public.create_user_notification(uuid, text, text, text, jsonb) from public;
+
 -- Friend Invitations Policies
 drop policy if exists "invitations_select_own" on public.friend_invitations;
 create policy "invitations_select_own"
@@ -605,10 +856,39 @@ create policy "debts_delete_own"
 create table if not exists public.user_settings (
   user_id uuid primary key references auth.users(id) on delete cascade,
   theme text not null default 'light' check (theme in ('light', 'dark')),
+  notifications_enabled_web boolean not null default true,
+  notifications_enabled_app boolean not null default true,
+  notification_preferences jsonb not null default '{
+    "invitation_received": {"web": true, "app": true},
+    "invitation_accepted": {"web": true, "app": true},
+    "invitation_rejected": {"web": true, "app": true},
+    "debt_created": {"web": true, "app": true},
+    "debt_payment_requested": {"web": true, "app": true},
+    "debt_paid": {"web": true, "app": true},
+    "debt_payment_rejected": {"web": true, "app": true}
+  }'::jsonb,
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+alter table public.user_settings
+  add column if not exists notifications_enabled_web boolean not null default true;
+
+alter table public.user_settings
+  add column if not exists notifications_enabled_app boolean not null default true;
+
+alter table public.user_settings
+  add column if not exists notification_preferences jsonb not null default '{
+    "invitation_received": {"web": true, "app": true},
+    "invitation_accepted": {"web": true, "app": true},
+    "invitation_rejected": {"web": true, "app": true},
+    "debt_created": {"web": true, "app": true},
+    "debt_payment_requested": {"web": true, "app": true},
+    "debt_paid": {"web": true, "app": true},
+    "debt_payment_rejected": {"web": true, "app": true}
+  }'::jsonb;
+
 alter table public.user_settings enable row level security;
+alter table public.user_notifications enable row level security;
 
 drop policy if exists "user_settings_select_own" on public.user_settings;
 create policy "user_settings_select_own"
@@ -628,6 +908,31 @@ create policy "user_settings_update_own"
   for update
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+drop policy if exists "user_notifications_select_own" on public.user_notifications;
+create policy "user_notifications_select_own"
+  on public.user_notifications
+  for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "user_notifications_insert_own" on public.user_notifications;
+create policy "user_notifications_insert_own"
+  on public.user_notifications
+  for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "user_notifications_update_own" on public.user_notifications;
+create policy "user_notifications_update_own"
+  on public.user_notifications
+  for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "user_notifications_delete_own" on public.user_notifications;
+create policy "user_notifications_delete_own"
+  on public.user_notifications
+  for delete
+  using (auth.uid() = user_id);
 
 create table if not exists public.user_device_sessions (
   id uuid primary key default gen_random_uuid(),

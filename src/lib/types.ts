@@ -2,6 +2,28 @@ export type DebtStatus = 'pending' | 'payment_requested' | 'paid';
 export type DebtType = 'owed_to_me' | 'owed_by_me';
 export type InvitationStatus = 'pending' | 'accepted' | 'rejected';
 export type Theme = 'light' | 'dark';
+export type NotificationType =
+  | 'invitation_received'
+  | 'invitation_accepted'
+  | 'invitation_rejected'
+  | 'debt_created'
+  | 'debt_payment_requested'
+  | 'debt_paid'
+  | 'debt_payment_rejected';
+
+export type NotificationChannel = 'web' | 'app';
+
+export type NotificationPreference = {
+  web: boolean;
+  app: boolean;
+};
+
+export type NotificationPreferences = Record<NotificationType, NotificationPreference>;
+
+export type NotificationChannelSettings = {
+  web: boolean;
+  app: boolean;
+};
 
 export interface Friend {
   id: string;
@@ -46,6 +68,19 @@ export interface AppState {
   friends: Friend[];
   invitations: FriendInvitation[];
   debts: Debt[];
+  notifications: AppNotification[];
+}
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  metadata?: Record<string, unknown>;
+  isRead: boolean;
+  createdAt: string;
+  readAt?: string;
 }
 
 export interface DeviceSession {

@@ -2,7 +2,7 @@
 
 import { ReactNode, createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
-import { AppState, AuthCredentials, Debt, DebtStatus, DebtType, DeviceSession, Friend, FriendInvitation, InvitationStatus, RegisterCredentials, Theme } from '@/lib/types';
+import { AppNotification, AppState, AuthCredentials, Debt, DebtStatus, DebtType, DeviceSession, Friend, FriendInvitation, InvitationStatus, NotificationChannel, NotificationChannelSettings, NotificationPreference, NotificationPreferences, NotificationType, RegisterCredentials, Theme } from '@/lib/types';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase';
 
 type AddFriendInput = Pick<Friend, 'name' | 'email' | 'avatar'>;
@@ -72,6 +72,18 @@ interface DeviceSessionRow {
   revoked_at: string | null;
 }
 
+interface NotificationRow {
+  id: string;
+  user_id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  metadata: Record<string, unknown> | null;
+  is_read: boolean;
+  created_at: string;
+  read_at: string | null;
+}
+
 type RealtimeRow = {
   user_id?: string;
   other_user_id?: string | null;
@@ -112,15 +124,79 @@ interface PagaYaContextValue extends AppState {
   removeDebt: (debtId: string) => Promise<void>;
   updateUserProfile: (profile: UpdateProfileInput) => Promise<void>;
   updatePassword: (newPassword: string) => Promise<void>;
+  setNotificationRead: (notificationId: string, read: boolean) => Promise<void>;
+  removeNotification: (notificationId: string) => Promise<void>;
+  markAllNotificationsAsRead: () => Promise<void>;
+  notificationPreferences: NotificationPreferences;
+  notificationChannelsEnabled: NotificationChannelSettings;
+  updateNotificationPreference: (type: NotificationType, channel: NotificationChannel, enabled: boolean) => Promise<void>;
+  updateNotificationChannelEnabled: (channel: NotificationChannel, enabled: boolean) => Promise<void>;
 }
 
 const PagaYaContext = createContext<PagaYaContextValue | null>(null);
+
+const NOTIFICATION_TYPES: NotificationType[] = [
+  'invitation_received',
+  'invitation_accepted',
+  'invitation_rejected',
+  'debt_created',
+  'debt_payment_requested',
+  'debt_paid',
+  'debt_payment_rejected',
+];
+
+const DEFAULT_NOTIFICATION_PREFERENCE: NotificationPreference = {
+  web: true,
+  app: true,
+};
+
+const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  invitation_received: { ...DEFAULT_NOTIFICATION_PREFERENCE },
+  invitation_accepted: { ...DEFAULT_NOTIFICATION_PREFERENCE },
+  invitation_rejected: { ...DEFAULT_NOTIFICATION_PREFERENCE },
+  debt_created: { ...DEFAULT_NOTIFICATION_PREFERENCE },
+  debt_payment_requested: { ...DEFAULT_NOTIFICATION_PREFERENCE },
+  debt_paid: { ...DEFAULT_NOTIFICATION_PREFERENCE },
+  debt_payment_rejected: { ...DEFAULT_NOTIFICATION_PREFERENCE },
+};
+
+const DEFAULT_NOTIFICATION_CHANNEL_SETTINGS: NotificationChannelSettings = {
+  web: true,
+  app: true,
+};
 
 const EMPTY_STATE: AppState = {
   friends: [],
   invitations: [],
   debts: [],
+  notifications: [],
 };
+
+function normalizeNotificationPreferences(value: unknown): NotificationPreferences {
+  if (!value || typeof value !== 'object') {
+    return DEFAULT_NOTIFICATION_PREFERENCES;
+  }
+
+  const rawValue = value as Record<string, unknown>;
+  const normalized = { ...DEFAULT_NOTIFICATION_PREFERENCES } as NotificationPreferences;
+
+  for (const type of NOTIFICATION_TYPES) {
+    const candidate = rawValue[type];
+
+    if (!candidate || typeof candidate !== 'object') {
+      continue;
+    }
+
+    const candidateObject = candidate as Record<string, unknown>;
+
+    normalized[type] = {
+      web: typeof candidateObject.web === 'boolean' ? candidateObject.web : DEFAULT_NOTIFICATION_PREFERENCE.web,
+      app: typeof candidateObject.app === 'boolean' ? candidateObject.app : DEFAULT_NOTIFICATION_PREFERENCE.app,
+    };
+  }
+
+  return normalized;
+}
 
 function mapFriendRow(row: FriendRow): Friend {
   return {
@@ -183,6 +259,20 @@ function mapDeviceSessionRow(row: DeviceSessionRow): DeviceSession {
     signedInAt: row.signed_in_at,
     lastSeenAt: row.last_seen_at,
     revokedAt: row.revoked_at ?? undefined,
+  };
+}
+
+function mapNotificationRow(row: NotificationRow): AppNotification {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    type: row.type,
+    title: row.title,
+    message: row.message,
+    metadata: row.metadata ?? undefined,
+    isRead: row.is_read,
+    createdAt: row.created_at,
+    readAt: row.read_at ?? undefined,
   };
 }
 
@@ -364,6 +454,8 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [theme, setThemeState] = useState<Theme>('dark');
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES);
+  const [notificationChannelsEnabled, setNotificationChannelsEnabled] = useState<NotificationChannelSettings>(DEFAULT_NOTIFICATION_CHANNEL_SETTINGS);
   const configured = useMemo(() => isSupabaseConfigured(), []);
   const pendingRealtimeRefreshRef = useRef<number | null>(null);
 
@@ -503,13 +595,19 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         { data: friendsData, error: friendsError },
         { data: invitationsData, error: invitationsError },
         { data: debtsData, error: debtsError },
+        { data: notificationsData, error: notificationsError },
         { data: settingsData },
         { data: devicesData, error: devicesError },
       ] = await Promise.all([
         supabase.from('friends').select('*').eq('user_id', activeUser.id).order('created_at', { ascending: false }),
         supabase.from('friend_invitations').select('*').or(`from_user_id.eq.${activeUser.id},to_user_id.eq.${activeUser.id},to_email.eq.${activeUser.email}`).order('created_at', { ascending: false }),
         supabase.from('debts').select('*').or(`user_id.eq.${activeUser.id},other_user_id.eq.${activeUser.id}`).order('created_at', { ascending: false }),
-        supabase.from('user_settings').select('theme').eq('user_id', activeUser.id).maybeSingle(),
+        supabase.from('user_notifications').select('*').eq('user_id', activeUser.id).order('created_at', { ascending: false }).limit(100),
+        supabase
+          .from('user_settings')
+          .select('theme, notification_preferences, notifications_enabled_web, notifications_enabled_app')
+          .eq('user_id', activeUser.id)
+          .maybeSingle(),
         supabase.from('user_device_sessions').select('*').eq('user_id', activeUser.id).is('revoked_at', null).order('last_seen_at', { ascending: false }),
       ]);
 
@@ -523,6 +621,10 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
 
       if (debtsError) {
         throw debtsError;
+      }
+
+      if (notificationsError) {
+        throw notificationsError;
       }
 
       if (devicesError) {
@@ -555,9 +657,22 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         friends: (friendsData ?? []).map((row) => mapFriendRow(row as FriendRow)),
         invitations: mappedInvitations,
         debts: mappedDebts,
+        notifications: (notificationsData ?? []).map((row) => mapNotificationRow(row as NotificationRow)),
       });
 
       setDeviceSessions((devicesData ?? []).map((row) => mapDeviceSessionRow(row as DeviceSessionRow)));
+
+      setNotificationPreferences(
+        normalizeNotificationPreferences(settingsData?.notification_preferences),
+      );
+      setNotificationChannelsEnabled({
+        web: typeof settingsData?.notifications_enabled_web === 'boolean'
+          ? settingsData.notifications_enabled_web
+          : DEFAULT_NOTIFICATION_CHANNEL_SETTINGS.web,
+        app: typeof settingsData?.notifications_enabled_app === 'boolean'
+          ? settingsData.notifications_enabled_app
+          : DEFAULT_NOTIFICATION_CHANNEL_SETTINGS.app,
+      });
 
       // Apply stored theme (only on first load, not on silent refresh polling)
       if (!silent) {
@@ -646,6 +761,8 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         setState(EMPTY_STATE);
         setDeviceSessions([]);
         setThemeState('dark');
+        setNotificationPreferences(DEFAULT_NOTIFICATION_PREFERENCES);
+        setNotificationChannelsEnabled(DEFAULT_NOTIFICATION_CHANNEL_SETTINGS);
         setIsLoadingAuth(false);
         setIsReady(true);
         return;
@@ -721,6 +838,20 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       event: '*',
       schema: 'public',
       table: 'user_device_sessions',
+    }, (payload) => {
+      const nextRow = payload.new as RealtimeRow;
+      const prevRow = payload.old as RealtimeRow;
+      const ownerId = nextRow.user_id ?? prevRow.user_id;
+
+      if (ownerId === user.id) {
+        scheduleRealtimeRefresh();
+      }
+    });
+
+    channel.on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'user_notifications',
     }, (payload) => {
       const nextRow = payload.new as RealtimeRow;
       const prevRow = payload.old as RealtimeRow;
@@ -1201,6 +1332,140 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  const setNotificationRead = async (notificationId: string, read: boolean) => {
+    const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+    const readAt = read ? new Date().toISOString() : null;
+
+    const { data, error } = await supabase
+      .from('user_notifications')
+      .update({ is_read: read, read_at: readAt })
+      .eq('id', notificationId)
+      .eq('user_id', activeUser.id)
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo actualizar la notificación.'));
+    }
+
+    setState((currentState) => ({
+      ...currentState,
+      notifications: currentState.notifications.map((notification) =>
+        notification.id === notificationId
+          ? {
+              ...notification,
+              isRead: read,
+              readAt: readAt ?? undefined,
+            }
+          : notification,
+      ),
+    }));
+  };
+
+  const removeNotification = async (notificationId: string) => {
+    const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+
+    const { data, error } = await supabase
+      .from('user_notifications')
+      .delete()
+      .eq('id', notificationId)
+      .eq('user_id', activeUser.id)
+      .select('id')
+      .single();
+
+    if (error || !data) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo eliminar la notificación.'));
+    }
+
+    setState((currentState) => ({
+      ...currentState,
+      notifications: currentState.notifications.filter((notification) => notification.id !== notificationId),
+    }));
+  };
+
+  const markAllNotificationsAsRead = async () => {
+    const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+
+    const { error } = await supabase
+      .from('user_notifications')
+      .update({ is_read: true, read_at: new Date().toISOString() })
+      .eq('user_id', activeUser.id)
+      .eq('is_read', false);
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudieron marcar todas las notificaciones como leídas.'));
+    }
+
+    setState((currentState) => ({
+      ...currentState,
+      notifications: currentState.notifications.map((notification) =>
+        notification.isRead
+          ? notification
+          : {
+              ...notification,
+              isRead: true,
+              readAt: new Date().toISOString(),
+            },
+      ),
+    }));
+  };
+
+  const updateNotificationPreference = async (type: NotificationType, channel: NotificationChannel, enabled: boolean) => {
+    const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+
+    const nextPreferences: NotificationPreferences = {
+      ...notificationPreferences,
+      [type]: {
+        ...notificationPreferences[type],
+        [channel]: enabled,
+      },
+    };
+
+    const { error } = await supabase
+      .from('user_settings')
+      .upsert(
+        {
+          user_id: activeUser.id,
+          notification_preferences: nextPreferences,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' },
+      );
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo actualizar la preferencia de notificaciones.'));
+    }
+
+    setNotificationPreferences(nextPreferences);
+  };
+
+  const updateNotificationChannelEnabled = async (channel: NotificationChannel, enabled: boolean) => {
+    const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+
+    const nextChannelSettings: NotificationChannelSettings = {
+      ...notificationChannelsEnabled,
+      [channel]: enabled,
+    };
+
+    const { error } = await supabase
+      .from('user_settings')
+      .upsert(
+        {
+          user_id: activeUser.id,
+          notifications_enabled_web: nextChannelSettings.web,
+          notifications_enabled_app: nextChannelSettings.app,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' },
+      );
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo actualizar la configuración global de notificaciones.'));
+    }
+
+    setNotificationChannelsEnabled(nextChannelSettings);
+  };
+
   const setTheme = async (newTheme: Theme) => {
     const { supabase, user: activeUser } = await ensureAuthenticatedUser();
 
@@ -1336,6 +1601,7 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         friends: state.friends,
         invitations: state.invitations,
         debts: state.debts,
+        notifications: state.notifications,
         isReady,
         isConfigured: configured,
         isAuthenticated: Boolean(user),
@@ -1346,6 +1612,8 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         deviceSessions,
         currentSessionId,
         theme,
+        notificationPreferences,
+        notificationChannelsEnabled,
         setTheme,
         signIn,
         signUp,
@@ -1362,6 +1630,11 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         removeDebt,
         updateUserProfile,
         updatePassword,
+        setNotificationRead,
+        removeNotification,
+        markAllNotificationsAsRead,
+        updateNotificationPreference,
+        updateNotificationChannelEnabled,
       },
     },
     children

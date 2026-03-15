@@ -10,10 +10,49 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Clock3, Laptop, LogOut, Moon, RefreshCw, Smartphone, Sun, LoaderCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import type { DeviceSession, Theme } from '@/lib/types';
+import type { DeviceSession, NotificationType, Theme } from '@/lib/types';
 import { AppLoadingScreen } from '@/components/ui/app-loading-screen';
+
+const NOTIFICATION_PREFERENCE_ITEMS: Array<{ type: NotificationType; label: string; description: string }> = [
+  {
+    type: 'invitation_received',
+    label: 'Invitaciones recibidas',
+    description: 'Cuando alguien te envía una invitación de amistad.',
+  },
+  {
+    type: 'invitation_accepted',
+    label: 'Invitaciones aceptadas',
+    description: 'Cuando aceptan una invitación que tú enviaste.',
+  },
+  {
+    type: 'invitation_rejected',
+    label: 'Invitaciones rechazadas',
+    description: 'Cuando rechazan una invitación que tú enviaste.',
+  },
+  {
+    type: 'debt_created',
+    label: 'Nueva deuda',
+    description: 'Cuando se registra una deuda en la que participas.',
+  },
+  {
+    type: 'debt_payment_requested',
+    label: 'Solicitud de confirmación de pago',
+    description: 'Cuando te piden confirmar el pago de una deuda.',
+  },
+  {
+    type: 'debt_paid',
+    label: 'Pago confirmado',
+    description: 'Cuando una deuda queda marcada como pagada.',
+  },
+  {
+    type: 'debt_payment_rejected',
+    label: 'Solicitud de pago rechazada',
+    description: 'Cuando se rechaza una solicitud para marcar una deuda como pagada.',
+  },
+];
 
 function formatSessionDate(value: string | undefined) {
   if (!value) {
@@ -37,7 +76,22 @@ function DeviceSessionIcon({ deviceSession }: { deviceSession: DeviceSession }) 
 }
 
 export default function ProfilePage() {
-  const { user, isReady, signOut, updateUserProfile, updatePassword, theme, setTheme, deviceSessions, currentSessionId, refreshDeviceSessions } = usePagaYa();
+  const {
+    user,
+    isReady,
+    signOut,
+    updateUserProfile,
+    updatePassword,
+    theme,
+    setTheme,
+    deviceSessions,
+    currentSessionId,
+    refreshDeviceSessions,
+    notificationPreferences,
+    notificationChannelsEnabled,
+    updateNotificationPreference,
+    updateNotificationChannelEnabled,
+  } = usePagaYa();
   const { toast } = useToast();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [username, setUsername] = useState('');
@@ -50,6 +104,7 @@ export default function ProfilePage() {
   const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
   const [isSubmittingTheme, setIsSubmittingTheme] = useState(false);
   const [isRefreshingDevices, setIsRefreshingDevices] = useState(false);
+  const [updatingNotificationPreferenceKey, setUpdatingNotificationPreferenceKey] = useState<string | null>(null);
 
   const userMetadata = useMemo(() => (user?.user_metadata ?? {}) as Record<string, unknown>, [user]);
 
@@ -221,6 +276,47 @@ export default function ProfilePage() {
     }
   };
 
+  const handleNotificationPreferenceChange = async (
+    type: NotificationType,
+    channel: 'web' | 'app',
+    enabled: boolean,
+  ) => {
+    const key = `${type}:${channel}`;
+    setUpdatingNotificationPreferenceKey(key);
+
+    try {
+      await updateNotificationPreference(type, channel, enabled);
+    } catch (error) {
+      toast({
+        title: 'No se pudo guardar la preferencia',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdatingNotificationPreferenceKey(null);
+    }
+  };
+
+  const handleNotificationChannelEnabledChange = async (
+    channel: 'web' | 'app',
+    enabled: boolean,
+  ) => {
+    const key = `global:${channel}`;
+    setUpdatingNotificationPreferenceKey(key);
+
+    try {
+      await updateNotificationChannelEnabled(channel, enabled);
+    } catch (error) {
+      toast({
+        title: 'No se pudo guardar la configuración',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdatingNotificationPreferenceKey(null);
+    }
+  };
+
   const handleRefreshDevices = async () => {
     setIsRefreshingDevices(true);
 
@@ -349,6 +445,106 @@ export default function ProfilePage() {
                     <Moon className="w-4 h-4" />
                     Oscuro
                   </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="lg:col-start-2">
+              <CardHeader>
+                <CardTitle>Preferencias de notificaciones</CardTitle>
+                <CardDescription>
+                  Configura las notificaciones del panel web. Las push móviles se activarán en el siguiente paso.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-5">
+                  <div className="rounded-xl border bg-card/50 p-4">
+                    <div className="mb-3">
+                      <p className="text-sm font-semibold text-foreground">Canales globales</p>
+                      <p className="text-xs text-muted-foreground">
+                        Puedes desactivar por completo el canal web. El canal push móvil aún no está disponible.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="flex items-center justify-between rounded-lg border bg-background/60 px-3 py-2.5">
+                        <div>
+                          <p className="text-sm font-medium">Web</p>
+                          <p className="text-[11px] text-muted-foreground">Panel de notificaciones del navegador</p>
+                        </div>
+                        <Switch
+                          checked={notificationChannelsEnabled.web}
+                          onCheckedChange={(checked) => {
+                            void handleNotificationChannelEnabledChange('web', checked);
+                          }}
+                          disabled={updatingNotificationPreferenceKey === 'global:web'}
+                          aria-label="Activar notificaciones globales en web"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between rounded-lg border bg-background/60 px-3 py-2.5">
+                        <div>
+                          <p className="text-sm font-medium">Push app</p>
+                          <p className="text-[11px] text-muted-foreground">Próximamente (aún no implementadas)</p>
+                        </div>
+                        <Switch
+                          checked={false}
+                          onCheckedChange={(checked) => {
+                            void handleNotificationChannelEnabledChange('app', checked);
+                          }}
+                          disabled
+                          aria-label="Activar notificaciones globales en app"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border bg-card/40">
+                    <div className="grid grid-cols-[minmax(0,1fr)_64px_64px] items-center border-b px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <span>Tipo de evento</span>
+                      <span className="text-center">Web</span>
+                      <span className="text-center">Push</span>
+                    </div>
+
+                    <div className="divide-y">
+                      {NOTIFICATION_PREFERENCE_ITEMS.map((item) => {
+                        const currentValue = notificationPreferences[item.type];
+                        const webKey = `${item.type}:web`;
+                        const appKey = `${item.type}:app`;
+
+                        return (
+                          <div key={item.type} className="grid grid-cols-[minmax(0,1fr)_64px_64px] items-center gap-2 px-3 py-3">
+                            <div>
+                              <p className="text-sm font-medium text-foreground">{item.label}</p>
+                              <p className="text-xs text-muted-foreground">{item.description}</p>
+                            </div>
+
+                            <div className="flex items-center justify-center">
+                              <Switch
+                                checked={currentValue.web}
+                                onCheckedChange={(checked) => {
+                                  void handleNotificationPreferenceChange(item.type, 'web', checked);
+                                }}
+                                disabled={!notificationChannelsEnabled.web || updatingNotificationPreferenceKey === webKey}
+                                aria-label={`Activar ${item.label} en web`}
+                              />
+                            </div>
+
+                            <div className="flex items-center justify-center">
+                              <Switch
+                                checked={currentValue.app}
+                                onCheckedChange={(checked) => {
+                                  void handleNotificationPreferenceChange(item.type, 'app', checked);
+                                }}
+                                disabled
+                                aria-label={`Activar ${item.label} en app`}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
               </CardContent>
             </Card>
