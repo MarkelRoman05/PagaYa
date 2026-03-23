@@ -19,6 +19,7 @@ jobs:
       KEYSTORE_PATH: android-signing-key.jks
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      ANDROID_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANDROID_GOOGLE_SERVICES_JSON_BASE64 }}
 
     steps:
       - name: Checkout
@@ -49,6 +50,15 @@ jobs:
 
       - name: Decode keystore
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$KEYSTORE_PATH"
+
+      - name: Decode Firebase google-services.json (optional)
+        run: |
+          if [ -n "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" ]; then
+            echo "$ANDROID_GOOGLE_SERVICES_JSON_BASE64" | base64 -d > android/app/google-services.json
+            echo "google-services.json restaurado desde secrets."
+          else
+            echo "ANDROID_GOOGLE_SERVICES_JSON_BASE64 no definido; se continua sin push FCM en esta build."
+          fi
 
       - name: Validate required secrets
         run: |

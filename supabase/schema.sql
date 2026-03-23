@@ -953,7 +953,29 @@ create unique index if not exists user_device_sessions_user_session_idx
 create index if not exists user_device_sessions_user_last_seen_idx
   on public.user_device_sessions (user_id, last_seen_at desc);
 
+create table if not exists public.user_push_tokens (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  token text not null,
+  platform text not null check (platform in ('android', 'ios')),
+  device_label text,
+  session_id text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default timezone('utc', now()),
+  last_seen_at timestamptz not null default timezone('utc', now())
+);
+
+create unique index if not exists user_push_tokens_user_token_idx
+  on public.user_push_tokens (user_id, token);
+
+create index if not exists user_push_tokens_user_active_idx
+  on public.user_push_tokens (user_id, is_active, last_seen_at desc);
+
+create index if not exists user_push_tokens_token_idx
+  on public.user_push_tokens (token);
+
 alter table public.user_device_sessions enable row level security;
+alter table public.user_push_tokens enable row level security;
 
 drop policy if exists "user_device_sessions_select_own" on public.user_device_sessions;
 create policy "user_device_sessions_select_own"
@@ -973,6 +995,31 @@ create policy "user_device_sessions_update_own"
   for update
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
+
+drop policy if exists "user_push_tokens_select_own" on public.user_push_tokens;
+create policy "user_push_tokens_select_own"
+  on public.user_push_tokens
+  for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "user_push_tokens_insert_own" on public.user_push_tokens;
+create policy "user_push_tokens_insert_own"
+  on public.user_push_tokens
+  for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "user_push_tokens_update_own" on public.user_push_tokens;
+create policy "user_push_tokens_update_own"
+  on public.user_push_tokens
+  for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop policy if exists "user_push_tokens_delete_own" on public.user_push_tokens;
+create policy "user_push_tokens_delete_own"
+  on public.user_push_tokens
+  for delete
+  using (auth.uid() = user_id);
 
 insert into storage.buckets (id, name, public)
 values ('avatars', 'avatars', true)

@@ -2,6 +2,8 @@
 
 import { ReactNode, createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { AppNotification, AppState, AuthCredentials, Debt, DebtStatus, DebtType, DeviceSession, Friend, FriendInvitation, InvitationStatus, NotificationChannel, NotificationChannelSettings, NotificationPreference, NotificationPreferences, NotificationType, RegisterCredentials, Theme } from '@/lib/types';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -458,6 +460,7 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
   const [notificationChannelsEnabled, setNotificationChannelsEnabled] = useState<NotificationChannelSettings>(DEFAULT_NOTIFICATION_CHANNEL_SETTINGS);
   const configured = useMemo(() => isSupabaseConfigured(), []);
   const pendingRealtimeRefreshRef = useRef<number | null>(null);
+  const pushTokenRef = useRef<string | null>(null);
 
   const refreshDeviceSessions = useCallback(async () => {
     const { supabase, user: activeUser } = await ensureAuthenticatedUser();
@@ -569,6 +572,60 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
 
     if (error) {
       console.error('No se pudo marcar la sesión actual como cerrada', error);
+    }
+  }, []);
+
+  const upsertAndroidPushToken = useCallback(async (token: string, activeSession: Session | null) => {
+    const supabase = getSupabaseBrowserClient();
+
+    if (!supabase || !activeSession?.user) {
+      return;
+    }
+
+    const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+    const browser = getBrowserName(userAgent);
+    const os = getOsName(userAgent);
+    const deviceLabel = getDeviceLabel(browser, os, userAgent);
+
+    const { error } = await supabase
+      .from('user_push_tokens')
+      .upsert(
+        {
+          user_id: activeSession.user.id,
+          token,
+          platform: 'android',
+          session_id: getSessionIdentifier(activeSession),
+          device_label: deviceLabel,
+          is_active: true,
+          last_seen_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,token' },
+      );
+
+    if (error) {
+      console.error('No se pudo registrar el token push de Android', error);
+    }
+  }, []);
+
+  const deactivateAndroidPushToken = useCallback(async (activeSession: Session | null) => {
+    const supabase = getSupabaseBrowserClient();
+    const token = pushTokenRef.current;
+
+    if (!supabase || !activeSession?.user || !token) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('user_push_tokens')
+      .update({
+        is_active: false,
+        last_seen_at: new Date().toISOString(),
+      })
+      .eq('user_id', activeSession.user.id)
+      .eq('token', token);
+
+    if (error) {
+      console.error('No se pudo desactivar el token push de Android', error);
     }
   }, []);
 
@@ -916,6 +973,89 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
     };
   }, [configured, refreshData, session, syncCurrentDeviceSession, user]);
 
+  useEffect(() => {
+    if (!configured || !session?.user) {
+      pushTokenRef.current = null;
+      return;
+    }
+
+    const isAndroidNative = Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android';
+
+    if (!isAndroidNative) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const cleanupListeners = async () => {
+      try {
+        await PushNotifications.removeAllListeners();
+      } catch (error) {
+        console.error('No se pudieron limpiar los listeners push', error);
+      }
+    };
+
+    const setupPushNotifications = async () => {
+      if (!notificationChannelsEnabled.app) {
+        await deactivateAndroidPushToken(session);
+        await cleanupListeners();
+        return;
+      }
+
+      try {
+        const permissionStatus = await PushNotifications.checkPermissions();
+        let receivePermission = permissionStatus.receive;
+
+        if (receivePermission === 'prompt') {
+          const requestedPermissions = await PushNotifications.requestPermissions();
+          receivePermission = requestedPermissions.receive;
+        }
+
+        if (receivePermission !== 'granted') {
+          return;
+        }
+
+        await cleanupListeners();
+
+        await PushNotifications.addListener('registration', async (token) => {
+          if (cancelled) {
+            return;
+          }
+
+          pushTokenRef.current = token.value;
+          await upsertAndroidPushToken(token.value, session);
+        });
+
+        await PushNotifications.addListener('registrationError', (error) => {
+          console.error('Error registrando push notifications en Android', error);
+        });
+
+        await PushNotifications.addListener('pushNotificationReceived', () => {
+          if (!cancelled) {
+            scheduleRealtimeRefresh();
+          }
+        });
+
+        await PushNotifications.addListener('pushNotificationActionPerformed', () => {
+          if (!cancelled) {
+            scheduleRealtimeRefresh();
+          }
+        });
+
+        await PushNotifications.register();
+      } catch (error) {
+        console.error('No se pudo inicializar Android Push Notifications', error);
+      }
+    };
+
+    void setupPushNotifications();
+
+    return () => {
+      cancelled = true;
+      void cleanupListeners();
+    };
+  }, [configured, deactivateAndroidPushToken, notificationChannelsEnabled.app, scheduleRealtimeRefresh, session, upsertAndroidPushToken]);
+
   const signIn = async ({ email, password }: AuthCredentials) => {
     const supabase = getSupabaseBrowserClient();
 
@@ -1005,6 +1145,14 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
 
     if (!supabase) {
       return;
+    }
+
+    await deactivateAndroidPushToken(session);
+
+    try {
+      await PushNotifications.unregister();
+    } catch (error) {
+      console.error('No se pudo desregistrar Android Push Notifications al cerrar sesion', error);
     }
 
     await markCurrentSessionAsRevoked(session);

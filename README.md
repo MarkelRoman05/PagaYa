@@ -181,6 +181,28 @@ Este comando:
 2. Sincroniza con Android.
 3. Ejecuta Gradle para construir la APK debug.
 
+## Notificaciones push Android
+
+La app ya registra tokens push en Android con Capacitor y los guarda en Supabase en la tabla `public.user_push_tokens`.
+
+Pasos obligatorios para activarlas:
+
+1. Aplica el esquema SQL actualizado en Supabase (incluye `user_push_tokens`).
+2. En Firebase, crea/usa tu proyecto Android con el package `com.markel.pagaya`.
+3. Descarga `google-services.json` y colócalo en `android/app/google-services.json`.
+4. Sincroniza Capacitor y recompila Android.
+
+```bash
+npm run mobile:sync:android
+npm run mobile:apk:debug
+```
+
+Notas:
+
+- El registro push se activa solo en app nativa Android (no en navegador web).
+- Si el usuario desactiva el canal app o cierra sesión, el token se marca como inactivo.
+- Para envío real de pushes desde backend, usa los tokens activos de `user_push_tokens` con FCM (HTTP v1 o Admin SDK).
+
 ## Modelo de datos
 
 Entidades principales en Supabase:
@@ -194,7 +216,6 @@ El esquema SQL de referencia está en `supabase/schema.sql`.
 
 ## Roadmap
 
-- Notificaciones push para solicitudes y confirmaciones.
 - División automática de gastos en grupos.
 - Exportación de histórico (CSV/PDF).
 - Multi-moneda y conversión automática.

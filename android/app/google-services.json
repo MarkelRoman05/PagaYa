@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1031480071156",
+    "project_id": "pagaya-a8525",
+    "storage_bucket": "pagaya-a8525.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1031480071156:android:544ebc367db95a5caddfa1",
+        "android_client_info": {
+          "package_name": "com.markel.pagaya"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA_WKqBALg9VoFZv8WZKN1gDVT28iI9ueM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
