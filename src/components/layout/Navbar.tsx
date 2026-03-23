@@ -186,7 +186,7 @@ export function Navbar() {
 
       <header
         className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85"
-        style={{ paddingTop: "var(--safe-area-top)" }}
+        style={{ top: "var(--safe-area-top)" }}
       >
         <div className="container mx-auto flex h-16 max-w-6xl items-center justify-between px-3 sm:px-4">
           <Link
@@ -268,7 +268,14 @@ export function Navbar() {
                     <span className="sr-only">Abrir notificaciones</span>
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="right" className="w-full sm:max-w-md">
+                <SheetContent
+                  side="right"
+                  className="w-full sm:max-w-md"
+                  style={{
+                    paddingTop: "calc(var(--safe-area-top) + 1rem)",
+                    paddingBottom: "calc(var(--safe-area-bottom) + 1rem)",
+                  }}
+                >
                   <SheetHeader>
                     <SheetTitle>Notificaciones</SheetTitle>
                     <SheetDescription>
