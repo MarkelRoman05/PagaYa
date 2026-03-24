@@ -4,7 +4,9 @@ import { createClient } from "@supabase/supabase-js";
 
 const DISPATCH_BATCH_SIZE = Number(process.env.PUSH_DISPATCH_BATCH_SIZE ?? "100");
 const WATCH_MODE = process.argv.includes("--watch") || process.env.PUSH_WATCH === "true";
+const WATCH_POLL_INTERVAL_MS = Number(process.env.PUSH_WATCH_POLL_INTERVAL_MS ?? "3000");
 const processingNotificationIds = new Set();
+let batchInFlight = false;
 
 function getFirebaseServiceAccount() {
   const pathFromEnv = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
@@ -202,6 +204,12 @@ async function processOneNotification(supabase, row, source) {
 }
 
 async function processPendingNotifications(supabase) {
+  if (batchInFlight) {
+    return;
+  }
+
+  batchInFlight = true;
+
   const { data: pendingRows, error: pendingError } = await supabase
     .from("user_notifications")
     .select("id,user_id,type,title,message,push_enabled")
@@ -211,11 +219,13 @@ async function processPendingNotifications(supabase) {
     .limit(DISPATCH_BATCH_SIZE);
 
   if (pendingError) {
+    batchInFlight = false;
     throw new Error(`No se pudieron cargar notificaciones pendientes: ${pendingError.message}`);
   }
 
   if (!pendingRows || pendingRows.length === 0) {
     console.log("No hay notificaciones push pendientes.");
+    batchInFlight = false;
     return;
   }
 
@@ -224,6 +234,7 @@ async function processPendingNotifications(supabase) {
   }
 
   console.log(`Push dispatch batch finalizado. Total=${pendingRows.length}`);
+  batchInFlight = false;
 }
 
 async function startRealtimeWatcher(supabase) {
@@ -253,6 +264,10 @@ async function startRealtimeWatcher(supabase) {
     }, 15000);
 
     channel.subscribe((status) => {
+      if (status === "CLOSED") {
+        console.error("Canal realtime cerrado para push dispatcher.");
+      }
+
       if (status === "SUBSCRIBED") {
         clearTimeout(timeout);
         resolve();
@@ -267,7 +282,16 @@ async function startRealtimeWatcher(supabase) {
 
   console.log("Push dispatcher realtime activo.");
 
+  const pollTimer = setInterval(() => {
+    void processPendingNotifications(supabase).catch((error) => {
+      console.error("Error en fallback polling del worker push:", error);
+    });
+  }, WATCH_POLL_INTERVAL_MS);
+
+  console.log(`Fallback polling activo cada ${WATCH_POLL_INTERVAL_MS}ms.`);
+
   const shutdown = async () => {
+    clearInterval(pollTimer);
     await supabase.removeChannel(channel);
     process.exit(0);
   };
@@ -284,6 +308,8 @@ async function startRealtimeWatcher(supabase) {
 }
 
 async function main() {
+  console.log(`Iniciando push dispatcher (watch=${WATCH_MODE ? "on" : "off"}, batchSize=${DISPATCH_BATCH_SIZE}).`);
+
   const serviceAccount = getFirebaseServiceAccount();
 
   if (!admin.apps.length) {
