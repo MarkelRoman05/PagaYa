@@ -540,6 +540,77 @@ begin
 end;
 $$ language plpgsql security definer;
 
+create or replace function public.update_debt_details(
+  debt_id_input uuid,
+  description_input text default null,
+  amount_input numeric default null,
+  type_input text default null,
+  friend_id_input uuid default null
+)
+returns void as $$
+declare
+  v_debt public.debts%rowtype;
+  v_current_user_id uuid;
+  v_friend public.friends%rowtype;
+begin
+  v_current_user_id := auth.uid();
+
+  if v_current_user_id is null then
+    raise exception 'User not authenticated';
+  end if;
+
+  select *
+  into v_debt
+  from public.debts
+  where id = debt_id_input
+  for update;
+
+  if v_debt is null then
+    raise exception 'Debt not found';
+  end if;
+
+  if v_debt.user_id <> v_current_user_id then
+    raise exception 'Only the debt owner can edit debt details';
+  end if;
+
+  if description_input is not null and nullif(trim(description_input), '') is null then
+    raise exception 'Debt description cannot be empty';
+  end if;
+
+  if amount_input is not null and amount_input <= 0 then
+    raise exception 'Debt amount must be greater than zero';
+  end if;
+
+  if type_input is not null and type_input not in ('owed_to_me', 'owed_by_me') then
+    raise exception 'Debt type is invalid';
+  end if;
+
+  if friend_id_input is not null then
+    select *
+    into v_friend
+    from public.friends
+    where id = friend_id_input
+      and user_id = v_current_user_id;
+
+    if v_friend is null then
+      raise exception 'Friend is invalid for this user';
+    end if;
+  end if;
+
+  update public.debts
+  set
+    description = coalesce(nullif(trim(description_input), ''), description),
+    amount = coalesce(amount_input, amount),
+    type = coalesce(type_input, type),
+    friend_id = coalesce(friend_id_input, friend_id),
+    other_user_id = case
+      when friend_id_input is not null then v_friend.other_user_id
+      else other_user_id
+    end
+  where id = v_debt.id;
+end;
+$$ language plpgsql security definer;
+
 revoke all on function public.request_debt_payment(uuid) from public;
 grant execute on function public.request_debt_payment(uuid) to authenticated;
 
@@ -548,6 +619,9 @@ grant execute on function public.confirm_debt_payment(uuid) to authenticated;
 
 revoke all on function public.reject_debt_payment_request(uuid) from public;
 grant execute on function public.reject_debt_payment_request(uuid) to authenticated;
+
+revoke all on function public.update_debt_details(uuid, text, numeric, text, uuid) from public;
+grant execute on function public.update_debt_details(uuid, text, numeric, text, uuid) to authenticated;
 
 create table if not exists public.user_notifications (
   id uuid primary key default gen_random_uuid(),

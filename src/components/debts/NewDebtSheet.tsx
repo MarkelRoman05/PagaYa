@@ -30,7 +30,6 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [friendSearch, setFriendSearch] = useState("");
   const [isFriendSelectOpen, setIsFriendSelectOpen] = useState(false);
-  const friendSearchInputRef = useRef<HTMLInputElement>(null);
   const friendPickerRef = useRef<HTMLDivElement>(null);
 
   const [formData, setFormData] = useState({
@@ -53,24 +52,6 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
       friend.name.toLowerCase().includes(normalizedQuery),
     );
   }, [friendSearch, friends]);
-
-  useEffect(() => {
-    if (!isFriendSelectOpen) {
-      return;
-    }
-
-    const timeoutId = window.setTimeout(() => {
-      friendSearchInputRef.current?.focus();
-    }, 0);
-    const retryTimeoutId = window.setTimeout(() => {
-      friendSearchInputRef.current?.focus();
-    }, 50);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-      window.clearTimeout(retryTimeoutId);
-    };
-  }, [isFriendSelectOpen]);
 
   useEffect(() => {
     if (!isFriendSelectOpen) {
@@ -287,11 +268,9 @@ export function NewDebtDialog({ open, onOpenChange }: NewDebtDialogProps) {
                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
               </Button>
               {isFriendSelectOpen && (
-                <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-40 rounded-lg border border-border bg-popover shadow-xl">
-                  <div className="sticky top-0 z-10 border-b border-border bg-popover p-2">
+                <div className="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-40 overflow-hidden rounded-lg border border-border bg-popover shadow-xl">
+                  <div className="border-b border-border bg-popover px-2 py-2">
                     <Input
-                      ref={friendSearchInputRef}
-                      autoFocus
                       value={friendSearch}
                       onChange={(event) => setFriendSearch(event.target.value)}
                       onKeyDown={(event) => {

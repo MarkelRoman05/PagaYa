@@ -9,6 +9,7 @@ import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase';
 
 type AddFriendInput = Pick<Friend, 'name' | 'email' | 'avatar'>;
 type AddDebtInput = Pick<Debt, 'friendId' | 'amount' | 'description' | 'type'>;
+type UpdateDebtInput = Partial<Pick<Debt, 'friendId' | 'amount' | 'description' | 'type'>>;
 type UpdateProfileInput = {
   username: string;
   avatarFile: File | null;
@@ -121,6 +122,7 @@ interface PagaYaContextValue extends AppState {
   rejectInvitation: (invitationId: string) => Promise<void>;
   removeFriend: (friendId: string) => Promise<void>;
   addDebt: (debt: AddDebtInput) => Promise<Debt>;
+  updateDebt: (debtId: string, debt: UpdateDebtInput) => Promise<Debt>;
   markAsPaid: (debtId: string) => Promise<void>;
   rejectDebtPaymentRequest: (debtId: string) => Promise<void>;
   removeDebt: (debtId: string) => Promise<void>;
@@ -1377,6 +1379,94 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
     return createdDebt;
   };
 
+  const updateDebt = async (debtId: string, debt: UpdateDebtInput) => {
+    const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+
+    const currentDebt = state.debts.find((item) => item.id === debtId);
+
+    if (!currentDebt) {
+      throw new Error('No se encontró la deuda seleccionada.');
+    }
+
+    if (!currentDebt.userId || currentDebt.userId !== activeUser.id) {
+      throw new Error('Solo la persona que creó esta deuda puede editarla.');
+    }
+
+    const payload: Partial<DebtRow> = {};
+
+    if (debt.description !== undefined) {
+      const normalizedDescription = debt.description.trim();
+
+      if (!normalizedDescription) {
+        throw new Error('La descripción no puede estar vacía.');
+      }
+
+      payload.description = normalizedDescription;
+    }
+
+    if (debt.amount !== undefined) {
+      if (!Number.isFinite(debt.amount) || debt.amount <= 0) {
+        throw new Error('La cantidad debe ser mayor que cero.');
+      }
+
+      payload.amount = debt.amount;
+    }
+
+    if (debt.type !== undefined) {
+      payload.type = debt.type;
+    }
+
+    if (debt.friendId !== undefined) {
+      const selectedFriend = state.friends.find((item) => item.id === debt.friendId);
+
+      if (!selectedFriend) {
+        throw new Error('Selecciona un amigo válido para asignar esta deuda.');
+      }
+
+      payload.friend_id = debt.friendId;
+      payload.other_user_id = selectedFriend.otherUserId ?? null;
+    }
+
+    if (Object.keys(payload).length === 0) {
+      return currentDebt;
+    }
+
+    const { error } = await supabase.rpc('update_debt_details', {
+      debt_id_input: debtId,
+      description_input: payload.description ?? null,
+      amount_input: payload.amount ?? null,
+      type_input: payload.type ?? null,
+      friend_id_input: payload.friend_id ?? null,
+    });
+
+    if (error) {
+      const message = typeof error.message === 'string' ? error.message.toLowerCase() : '';
+
+      if (message.includes('update_debt_details') && message.includes('function')) {
+        throw new Error('Falta la función SQL update_debt_details en Supabase. Ejecuta de nuevo el contenido de supabase/schema.sql en el SQL Editor.');
+      }
+
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo actualizar la deuda.'));
+    }
+
+    const updatedDebt: Debt = {
+      ...currentDebt,
+      description: payload.description ?? currentDebt.description,
+      amount: payload.amount ?? currentDebt.amount,
+      type: payload.type ?? currentDebt.type,
+      friendId: payload.friend_id ?? currentDebt.friendId,
+    };
+
+    setState((currentState) => ({
+      ...currentState,
+      debts: currentState.debts.map((item) => (item.id === debtId ? updatedDebt : item)),
+    }));
+
+    scheduleRealtimeRefresh();
+
+    return updatedDebt;
+  };
+
   const markAsPaid = async (debtId: string) => {
     const { supabase } = await ensureAuthenticatedUser();
 
@@ -1793,6 +1883,7 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         rejectInvitation,
         removeFriend,
         addDebt,
+        updateDebt,
         markAsPaid,
         rejectDebtPaymentRequest,
         removeDebt,

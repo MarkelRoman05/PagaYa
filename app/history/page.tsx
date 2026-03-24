@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { AppLoadingScreen, InlineLoadingNotice } from '@/components/ui/app-loading-screen';
 
 export default function HistoryPage() {
-  const { friends, debts, refreshData, removeDebt, isReady, isLoadingData } = usePagaYa();
+  const { friends, debts, updateDebt, refreshData, removeDebt, isReady, isLoadingData } = usePagaYa();
   const [searchTerm, setSearchTerm] = useState('');
   const { toast } = useToast();
 
@@ -74,6 +74,8 @@ export default function HistoryPage() {
                 key={debt.id} 
                 debt={debt} 
                 friend={friends.find(f => f.id === debt.friendId)} 
+                allowEdit={false}
+                onUpdate={updateDebt}
                 onPaid={() => {}} // Already paid
                 onDelete={removeDebt}
               />

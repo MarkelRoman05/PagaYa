@@ -16,7 +16,7 @@ import { AppLoadingScreen, InlineLoadingNotice } from '@/components/ui/app-loadi
 
 export default function Dashboard() {
   const [isNewDebtOpen, setIsNewDebtOpen] = useState(false);
-  const { friends, debts, markAsPaid, rejectDebtPaymentRequest, removeDebt, isReady, isLoadingData, refreshData, user } = usePagaYa();
+  const { friends, debts, updateDebt, markAsPaid, rejectDebtPaymentRequest, removeDebt, isReady, isLoadingData, refreshData, user } = usePagaYa();
   const { toast } = useToast();
 
   const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
@@ -127,6 +127,7 @@ export default function Dashboard() {
                     key={debt.id} 
                     debt={debt} 
                     friend={friends.find(f => f.id === debt.friendId)} 
+                    onUpdate={updateDebt}
                     onPaid={markAsPaid}
                     onRejectPaymentRequest={rejectDebtPaymentRequest}
                     onDelete={removeDebt}
@@ -144,6 +145,7 @@ export default function Dashboard() {
                     key={debt.id} 
                     debt={debt} 
                     friend={friends.find(f => f.id === debt.friendId)} 
+                    onUpdate={updateDebt}
                     onPaid={markAsPaid}
                     onRejectPaymentRequest={rejectDebtPaymentRequest}
                     onDelete={removeDebt}
@@ -161,6 +163,7 @@ export default function Dashboard() {
                     key={debt.id} 
                     debt={debt} 
                     friend={friends.find(f => f.id === debt.friendId)} 
+                    onUpdate={updateDebt}
                     onPaid={markAsPaid}
                     onRejectPaymentRequest={rejectDebtPaymentRequest}
                     onDelete={removeDebt}
