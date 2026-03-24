@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import { Wallet, ArrowRight, ShieldCheck, Zap, Users2, LogOut, Moon, Sun, ChevronDown, LoaderCircle } from 'lucide-react';
+import { Wallet, ArrowRight, ShieldCheck, Zap, Users2, LogOut, Moon, Sun, ChevronDown, LoaderCircle, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { AppLoadingScreen } from '@/components/ui/app-loading-screen';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -24,6 +24,7 @@ import type { Theme } from '@/lib/types';
 export default function Home() {
   const router = useRouter();
   const { isAuthenticated, user, signOut, theme, setTheme } = usePagaYa();
+  const androidApkUrl = 'https://github.com/MarkelRoman05/PagaYa/releases/download/android-latest/PagaYa-latest-release.apk';
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isChangingTheme, setIsChangingTheme] = useState(false);
   const [isNativeApp, setIsNativeApp] = useState<boolean | null>(null);
@@ -216,6 +217,16 @@ export default function Home() {
               <Link href={isAuthenticated ? '/dashboard' : '/auth'} className="flex items-center gap-2">
                 {isAuthenticated ? 'Ir a mi panel' : 'Empezar ahora'} <ArrowRight className="w-5 h-5" />
               </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="rounded-full border-primary/40 bg-background px-8 h-14 text-lg text-primary hover:bg-primary/10 hover:text-primary"
+            >
+              <a href={androidApkUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2">
+                Descargar APK Android <Download className="w-5 h-5" />
+              </a>
             </Button>
             {!isAuthenticated && (
               <Button asChild variant="outline" size="lg" className="rounded-full px-8 h-14 text-lg">
