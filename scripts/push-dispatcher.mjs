@@ -1,5 +1,6 @@
 import fs from "node:fs";
-import admin from "firebase-admin";
+import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { getMessaging } from "firebase-admin/messaging";
 import { createClient } from "@supabase/supabase-js";
 
 const DISPATCH_BATCH_SIZE = Number(process.env.PUSH_DISPATCH_BATCH_SIZE ?? "100");
@@ -151,7 +152,7 @@ async function dispatchNotification(supabase, row) {
     tokens,
   };
 
-  const result = await admin.messaging().sendEachForMulticast(payload);
+  const result = await getMessaging().sendEachForMulticast(payload);
   const invalidTokens = [];
 
   result.responses.forEach((response, index) => {
@@ -312,9 +313,9 @@ async function main() {
 
   const serviceAccount = getFirebaseServiceAccount();
 
-  if (!admin.apps.length) {
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
+  if (!getApps().length) {
+    initializeApp({
+      credential: cert(serviceAccount),
     });
   }
 
