@@ -34,8 +34,28 @@ export default function Home() {
   const avatarLetter = sessionName.charAt(0).toUpperCase();
 
   useEffect(() => {
-    const hasCapacitor = typeof window !== 'undefined' && 'Capacitor' in window;
-    setIsNativeApp(hasCapacitor);
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const capacitor = (
+      window as Window & {
+        Capacitor?: {
+          isNativePlatform?: () => boolean;
+          getPlatform?: () => string;
+        };
+      }
+    ).Capacitor;
+
+    const isNativeByProtocol = window.location.protocol === 'capacitor:' || window.location.protocol === 'ionic:';
+    const isNativeByApi =
+      typeof capacitor?.isNativePlatform === 'function'
+        ? capacitor.isNativePlatform()
+        : typeof capacitor?.getPlatform === 'function'
+          ? capacitor.getPlatform() !== 'web'
+          : false;
+
+    setIsNativeApp(isNativeByProtocol || isNativeByApi);
   }, []);
 
   useEffect(() => {
