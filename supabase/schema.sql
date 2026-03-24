@@ -236,6 +236,25 @@ returns table (
   limit 1;
 $$ language sql security definer;
 
+create or replace function public.is_email_registered(email_input text)
+returns boolean as $$
+declare
+  v_email text;
+begin
+  v_email := lower(nullif(trim(email_input), ''));
+
+  if v_email is null then
+    return false;
+  end if;
+
+  return exists (
+    select 1
+    from auth.users u
+    where lower(u.email) = v_email
+  );
+end;
+$$ language plpgsql security definer;
+
 create or replace function public.update_my_username(username_input text)
 returns void as $$
 declare
@@ -281,6 +300,9 @@ grant execute on function public.is_username_available(text) to anon, authentica
 
 revoke all on function public.get_user_by_username(text) from public;
 grant execute on function public.get_user_by_username(text) to authenticated;
+
+revoke all on function public.is_email_registered(text) from public;
+grant execute on function public.is_email_registered(text) to anon, authenticated;
 
 revoke all on function public.update_my_username(text) from public;
 grant execute on function public.update_my_username(text) to authenticated;

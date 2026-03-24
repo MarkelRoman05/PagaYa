@@ -125,7 +125,7 @@ function AuthPageContent() {
       setRegisterValues({ email, username, password: '', confirmPassword: '' });
 
       if (!session) {
-        setSuccessMessage('Cuenta creada. Revisa tu correo para confirmar el acceso si tienes verificación por email activada en Supabase.');
+        setSuccessMessage('Cuenta creada. Revisa tu correo para verificar tu cuenta.');
       } else {
         router.replace(nextPath);
       }

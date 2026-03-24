@@ -1077,10 +1077,30 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       throw new Error('Faltan las variables NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.');
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
     const normalizedUsername = username.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      throw new Error('Debes introducir un email válido para registrarte.');
+    }
 
     if (!/^[a-z0-9_]{3,24}$/.test(normalizedUsername)) {
       throw new Error('El nombre de usuario debe tener entre 3 y 24 caracteres y solo puede incluir letras, números y guiones bajos.');
+    }
+
+    const { data: isEmailRegistered, error: emailCheckError } = await supabase.rpc('is_email_registered', {
+      email_input: normalizedEmail,
+    });
+
+    if (emailCheckError) {
+      const normalizedCheckMessage = emailCheckError.message.toLowerCase();
+      const missingFunction = emailCheckError.code === '42883' || normalizedCheckMessage.includes('is_email_registered');
+
+      if (!missingFunction) {
+        throw new Error(getFriendlyErrorMessage(emailCheckError, 'No se pudo validar si el email ya existe.'));
+      }
+    } else if (isEmailRegistered) {
+      throw new Error('Este email ya está registrado. Inicia sesión o recupera tu contraseña.');
     }
 
     const { data: isAvailable, error: usernameCheckError } = await supabase.rpc('is_username_available', {
@@ -1096,7 +1116,7 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
     }
 
     const { data: signUpData, error } = await supabase.auth.signUp({
-      email,
+      email: normalizedEmail,
       password,
       options: {
         data: {
