@@ -6,7 +6,10 @@ import { createClient } from "@supabase/supabase-js";
 const DISPATCH_BATCH_SIZE = Number(process.env.PUSH_DISPATCH_BATCH_SIZE ?? "100");
 const WATCH_MODE = process.argv.includes("--watch") || process.env.PUSH_WATCH === "true";
 const WATCH_POLL_INTERVAL_MS = Number(process.env.PUSH_WATCH_POLL_INTERVAL_MS ?? "3000");
+const NO_TOKEN_RETRY_MS = Number(process.env.PUSH_NO_TOKEN_RETRY_MS ?? "60000");
+const FAILURE_RETRY_MS = Number(process.env.PUSH_FAILURE_RETRY_MS ?? "15000");
 const processingNotificationIds = new Set();
+const notificationRetryAfter = new Map();
 let batchInFlight = false;
 
 function getFirebaseServiceAccount() {
@@ -61,13 +64,13 @@ function compactError(error) {
   return [maybeCode, maybeMessage].filter(Boolean).join(": ").slice(0, 280);
 }
 
-async function markAsDelivered(supabase, notificationId) {
+async function markAsDelivered(supabase, notificationId, currentAttempts = 0) {
   const { error } = await supabase
     .from("user_notifications")
     .update({
       push_sent_at: new Date().toISOString(),
       push_last_error: null,
-      push_attempts: 1,
+      push_attempts: currentAttempts + 1,
     })
     .eq("id", notificationId);
 
@@ -76,11 +79,11 @@ async function markAsDelivered(supabase, notificationId) {
   }
 }
 
-async function markAsFailed(supabase, notificationId, reason) {
+async function markAsFailed(supabase, notificationId, reason, currentAttempts = 0) {
   const { error } = await supabase
     .from("user_notifications")
     .update({
-      push_attempts: 1,
+      push_attempts: currentAttempts + 1,
       push_last_error: reason,
     })
     .eq("id", notificationId);
@@ -129,7 +132,7 @@ async function dispatchNotification(supabase, row) {
     .filter((token) => typeof token === "string" && token.length > 0);
 
   if (tokens.length === 0) {
-    await markAsFailed(supabase, row.id, "NO_ACTIVE_ANDROID_TOKENS");
+    await markAsFailed(supabase, row.id, "NO_ACTIVE_ANDROID_TOKENS", row.push_attempts ?? 0);
     return { sent: false, reason: "no_tokens" };
   }
 
@@ -172,12 +175,12 @@ async function dispatchNotification(supabase, row) {
   }
 
   if (result.successCount > 0) {
-    await markAsDelivered(supabase, row.id);
+    await markAsDelivered(supabase, row.id, row.push_attempts ?? 0);
     return { sent: true, successCount: result.successCount, failureCount: result.failureCount };
   }
 
   const firstError = compactError(result.responses[0]?.error);
-  await markAsFailed(supabase, row.id, `FCM_FAILED:${firstError}`);
+  await markAsFailed(supabase, row.id, `FCM_FAILED:${firstError}`, row.push_attempts ?? 0);
   return { sent: false, reason: firstError };
 }
 
@@ -186,18 +189,27 @@ async function processOneNotification(supabase, row, source) {
     return;
   }
 
+  const nextRetryAt = notificationRetryAfter.get(row.id);
+  if (typeof nextRetryAt === "number" && Date.now() < nextRetryAt) {
+    return;
+  }
+
   processingNotificationIds.add(row.id);
 
   try {
     const result = await dispatchNotification(supabase, row);
     if (result.sent) {
+      notificationRetryAfter.delete(row.id);
       console.log(`[${source}] push enviada para ${row.id}`);
     } else {
+      const retryDelay = result.reason === "no_tokens" ? NO_TOKEN_RETRY_MS : FAILURE_RETRY_MS;
+      notificationRetryAfter.set(row.id, Date.now() + retryDelay);
       console.log(`[${source}] push no enviada para ${row.id}: ${result.reason}`);
     }
   } catch (error) {
     const reason = compactError(error);
-    await markAsFailed(supabase, row.id, `DISPATCH_ERROR:${reason}`);
+    await markAsFailed(supabase, row.id, `DISPATCH_ERROR:${reason}`, row.push_attempts ?? 0);
+    notificationRetryAfter.set(row.id, Date.now() + FAILURE_RETRY_MS);
     console.error(`[${source}] fallo en notificacion ${row.id}: ${reason}`);
   } finally {
     processingNotificationIds.delete(row.id);
@@ -213,7 +225,7 @@ async function processPendingNotifications(supabase) {
 
   const { data: pendingRows, error: pendingError } = await supabase
     .from("user_notifications")
-    .select("id,user_id,type,title,message,push_enabled")
+    .select("id,user_id,type,title,message,push_enabled,push_attempts")
     .eq("push_enabled", true)
     .is("push_sent_at", null)
     .order("created_at", { ascending: true })
