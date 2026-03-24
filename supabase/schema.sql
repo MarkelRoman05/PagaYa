@@ -544,14 +544,34 @@ create table if not exists public.user_notifications (
   metadata jsonb not null default '{}'::jsonb,
   is_read boolean not null default false,
   created_at timestamptz not null default timezone('utc', now()),
-  read_at timestamptz
+  read_at timestamptz,
+  push_enabled boolean not null default true,
+  push_sent_at timestamptz,
+  push_attempts integer not null default 0,
+  push_last_error text
 );
+
+alter table public.user_notifications
+  add column if not exists push_enabled boolean not null default true;
+
+alter table public.user_notifications
+  add column if not exists push_sent_at timestamptz;
+
+alter table public.user_notifications
+  add column if not exists push_attempts integer not null default 0;
+
+alter table public.user_notifications
+  add column if not exists push_last_error text;
 
 create index if not exists user_notifications_user_created_idx
   on public.user_notifications (user_id, created_at desc);
 
 create index if not exists user_notifications_user_unread_idx
   on public.user_notifications (user_id, is_read, created_at desc);
+
+create index if not exists user_notifications_push_pending_idx
+  on public.user_notifications (created_at asc)
+  where push_enabled is true and push_sent_at is null;
 
 create or replace function public.create_user_notification(
   target_user_id uuid,
@@ -567,6 +587,7 @@ declare
   v_app_enabled boolean;
   v_global_web_enabled boolean;
   v_global_app_enabled boolean;
+  v_push_enabled boolean;
 begin
   if target_user_id is null then
     return;
@@ -596,19 +617,23 @@ begin
     end if;
   end if;
 
+  v_push_enabled := coalesce(v_global_app_enabled, true) and coalesce(v_app_enabled, true);
+
   insert into public.user_notifications (
     user_id,
     type,
     title,
     message,
-    metadata
+    metadata,
+    push_enabled
   )
   values (
     target_user_id,
     notification_type,
     notification_title,
     notification_message,
-    coalesce(notification_metadata, '{}'::jsonb)
+    coalesce(notification_metadata, '{}'::jsonb),
+    v_push_enabled
   );
 end;
 $$ language plpgsql security definer;

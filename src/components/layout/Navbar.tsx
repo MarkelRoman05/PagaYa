@@ -129,8 +129,8 @@ export function Navbar() {
   ];
 
   const visibleNotifications = useMemo(() => {
-    // El centro actual de notificaciones es interno/web.
-    // Las push de app móvil se implementarán en una fase posterior.
+    // Este centro muestra notificaciones internas de la app.
+    // Las push nativas de Android ya se envian en paralelo por FCM.
     if (!notificationChannelsEnabled.web) {
       return [];
     }

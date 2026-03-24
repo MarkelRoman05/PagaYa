@@ -17,6 +17,10 @@
     "mobile:dev:android": "CAP_SERVER_URL=http://10.0.2.2:9002 npx cap run android",
     "mobile:dev:android:usb": "source ~/.bashrc && adb reverse tcp:9002 tcp:9002 && CAP_SERVER_URL=http://localhost:9002 npx cap run android",
     "mobile:dev:ios": "CAP_SERVER_URL=http://localhost:9002 npx cap run ios",
+    "push:test": "node ./scripts/send-push-test.mjs",
+    "push:dispatch": "node ./scripts/push-dispatcher.mjs",
+    "push:worker": "node ./scripts/push-dispatcher.mjs --watch",
+    "push:dispatch:loop": "while true; do npm run push:dispatch; sleep 10; done",
     "release:patch": "bash ./scripts/release.sh patch",
     "release:minor": "bash ./scripts/release.sh minor",
     "release:major": "bash ./scripts/release.sh major"
@@ -56,6 +60,7 @@
     "dotenv": "^16.5.0",
     "embla-carousel-react": "^8.6.0",
     "firebase": "^11.9.1",
+    "firebase-admin": "^13.7.0",
     "lucide-react": "^0.475.0",
     "next": "^15.5.12",
     "patch-package": "^8.0.0",

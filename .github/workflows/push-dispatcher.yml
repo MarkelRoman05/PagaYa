@@ -1,0 +1,52 @@
+name: Push Dispatcher
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+jobs:
+  dispatch-push:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      FIREBASE_SERVICE_ACCOUNT_JSON_BASE64: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON_BASE64 }}
+      PUSH_DISPATCH_BATCH_SIZE: 100
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate required secrets
+        run: |
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "Falta NEXT_PUBLIC_SUPABASE_URL"
+            exit 1
+          fi
+          if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then
+            echo "Falta SUPABASE_SERVICE_ROLE_KEY"
+            exit 1
+          fi
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_JSON_BASE64" ]; then
+            echo "Falta FIREBASE_SERVICE_ACCOUNT_JSON_BASE64"
+            exit 1
+          fi
+
+      - name: Dispatch pending push notifications
+        run: npm run push:dispatch

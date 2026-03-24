@@ -203,6 +203,64 @@ Notas:
 - Si el usuario desactiva el canal app o cierra sesión, el token se marca como inactivo.
 - Para envío real de pushes desde backend, usa los tokens activos de `user_push_tokens` con FCM (HTTP v1 o Admin SDK).
 
+### Envio automatico en produccion (ya implementado)
+
+El repositorio incluye un dispatcher backend que envia push a partir de `user_notifications`:
+
+- Script: `scripts/push-dispatcher.mjs`
+- Workflow programado: `.github/workflows/push-dispatcher.yml` (cada 5 minutos)
+- Worker tiempo real: `npm run push:worker` (recomendado para envio inmediato)
+
+Flujo:
+
+1. La app crea notificaciones en `user_notifications` (triggers SQL existentes).
+2. Si `push_enabled=true`, el worker realtime la procesa al instante.
+3. Lee tokens activos de `user_push_tokens`.
+4. Envia por FCM.
+5. Marca resultado en `push_sent_at`, `push_attempts`, `push_last_error`.
+6. El workflow de cron actua como fallback por si el worker estuvo caido.
+
+Secrets necesarios en GitHub Actions:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `FIREBASE_SERVICE_ACCOUNT_JSON_BASE64`
+
+Para lanzar manualmente una ejecucion del dispatcher:
+
+```bash
+npm run push:dispatch
+```
+
+Para ejecucion inmediata y continua (produccion):
+
+```bash
+npm run push:worker
+```
+
+Ejemplo con PM2 (recomendado en VPS):
+
+```bash
+pm2 start npm --name pagaya-push-worker -- run push:worker
+pm2 save
+```
+
+### Test rápido si Firebase Console no muestra "Send your first message"
+
+Si la UI de Firebase no deja enviar a un token de dispositivo, puedes probar localmente con Admin SDK:
+
+1. En Google Cloud -> Service Accounts, crea una cuenta con permisos de Firebase Cloud Messaging.
+2. Descarga el JSON de la cuenta de servicio y guárdalo fuera del repositorio.
+3. Exporta la ruta del JSON en una variable de entorno.
+4. Envía una push al token de `user_push_tokens`.
+
+```bash
+export FIREBASE_SERVICE_ACCOUNT_PATH=/ruta/segura/firebase-service-account.json
+npm run push:test -- "FCM_TOKEN_AQUI" "Prueba PagaYa" "Push funcionando"
+```
+
+Si el comando devuelve `messageId`, el envío a FCM fue correcto.
+
 ## Modelo de datos
 
 Entidades principales en Supabase:

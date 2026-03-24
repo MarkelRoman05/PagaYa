@@ -453,7 +453,7 @@ export default function ProfilePage() {
               <CardHeader>
                 <CardTitle>Preferencias de notificaciones</CardTitle>
                 <CardDescription>
-                  Configura las notificaciones del panel web. Las push móviles se activarán en el siguiente paso.
+                  Configura tanto las notificaciones del panel web como las push móviles.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -462,7 +462,7 @@ export default function ProfilePage() {
                     <div className="mb-3">
                       <p className="text-sm font-semibold text-foreground">Canales globales</p>
                       <p className="text-xs text-muted-foreground">
-                        Puedes desactivar por completo el canal web. El canal push móvil aún no está disponible.
+                        Puedes activar o desactivar por completo los canales web y push móvil.
                       </p>
                     </div>
 
@@ -485,14 +485,14 @@ export default function ProfilePage() {
                       <div className="flex items-center justify-between rounded-lg border bg-background/60 px-3 py-2.5">
                         <div>
                           <p className="text-sm font-medium">Push app</p>
-                          <p className="text-[11px] text-muted-foreground">Próximamente (aún no implementadas)</p>
+                          <p className="text-[11px] text-muted-foreground">Notificaciones push en Android</p>
                         </div>
                         <Switch
-                          checked={false}
+                          checked={notificationChannelsEnabled.app}
                           onCheckedChange={(checked) => {
                             void handleNotificationChannelEnabledChange('app', checked);
                           }}
-                          disabled
+                          disabled={updatingNotificationPreferenceKey === 'global:app'}
                           aria-label="Activar notificaciones globales en app"
                         />
                       </div>
@@ -536,7 +536,7 @@ export default function ProfilePage() {
                                 onCheckedChange={(checked) => {
                                   void handleNotificationPreferenceChange(item.type, 'app', checked);
                                 }}
-                                disabled
+                                disabled={!notificationChannelsEnabled.app || updatingNotificationPreferenceKey === appKey}
                                 aria-label={`Activar ${item.label} en app`}
                               />
                             </div>
