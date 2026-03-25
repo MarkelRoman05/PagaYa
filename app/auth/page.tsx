@@ -8,11 +8,15 @@ import { usePagaYa } from '@/hooks/use-pagaya';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { AppLoadingScreen } from '@/components/ui/app-loading-screen';
+
+const PASSWORD_RESET_COOLDOWN_SECONDS = 60;
+const PASSWORD_RESET_COOLDOWN_STORAGE_KEY = 'pagaya.passwordResetCooldownUntil';
 
 function AuthPageFallback() {
   return <AppLoadingScreen title="Preparando acceso" subtitle="Conectando con tu cuenta segura..." />;
@@ -28,24 +32,78 @@ function AuthPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
-  const { isReady, isConfigured, isAuthenticated, isLoadingAuth, signIn, signUp, session } = usePagaYa();
+  const { isReady, isConfigured, isAuthenticated, isLoadingAuth, signIn, signUp, requestPasswordReset, updatePassword, session } = usePagaYa();
   const [loginValues, setLoginValues] = useState({ email: '', password: '' });
   const [registerValues, setRegisterValues] = useState({ email: '', username: '', password: '', confirmPassword: '' });
   const [isSubmitting, setIsSubmitting] = useState<'login' | 'register' | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [isResetSubmitting, setIsResetSubmitting] = useState(false);
+  const [resetCooldownUntil, setResetCooldownUntil] = useState(0);
+  const [currentTimestamp, setCurrentTimestamp] = useState(() => Date.now());
+  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
+  const [newPasswordValues, setNewPasswordValues] = useState({ password: '', confirmPassword: '' });
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
   const initialTab = searchParams.get('tab') === 'register' ? 'register' : 'login';
   const nextPath = searchParams.get('next') || '/dashboard';
+  const resetCooldownSecondsRemaining = Math.max(0, Math.ceil((resetCooldownUntil - currentTimestamp) / 1000));
+  const isResetOnCooldown = resetCooldownSecondsRemaining > 0;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const storedValue = window.localStorage.getItem(PASSWORD_RESET_COOLDOWN_STORAGE_KEY);
+
+    if (!storedValue) {
+      return;
+    }
+
+    const parsedValue = Number(storedValue);
+
+    if (Number.isNaN(parsedValue) || parsedValue <= Date.now()) {
+      window.localStorage.removeItem(PASSWORD_RESET_COOLDOWN_STORAGE_KEY);
+      return;
+    }
+
+    setResetCooldownUntil(parsedValue);
+  }, []);
+
+  useEffect(() => {
+    if (!isResetOnCooldown) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setCurrentTimestamp(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [isResetOnCooldown]);
+
+  useEffect(() => {
+    const mode = searchParams.get('mode');
+    const type = searchParams.get('type');
+    const hashParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.hash.replace(/^#/, '')) : null;
+    const hashType = hashParams?.get('type');
+
+    setIsRecoveryMode(mode === 'reset' || type === 'recovery' || hashType === 'recovery');
+  }, [searchParams]);
 
   useEffect(() => {
     if (!isReady || isLoadingAuth) {
       return;
     }
 
-    if (isAuthenticated) {
+    if (isAuthenticated && !isRecoveryMode) {
       router.replace(nextPath);
     }
-  }, [isAuthenticated, isLoadingAuth, isReady, nextPath, router]);
+  }, [isAuthenticated, isLoadingAuth, isReady, isRecoveryMode, nextPath, router]);
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -72,6 +130,77 @@ function AuthPageContent() {
       });
     } finally {
       setIsSubmitting(null);
+    }
+  };
+
+  const handleOpenPasswordReset = () => {
+    setResetEmail(loginValues.email.trim().toLowerCase());
+    setIsResetDialogOpen(true);
+  };
+
+  const handlePasswordReset = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (isResetOnCooldown) {
+      toast({
+        title: 'Espera un momento',
+        description: `Podrás solicitar otro correo en ${resetCooldownSecondsRemaining}s.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const email = resetEmail.trim().toLowerCase();
+
+    if (!email) {
+      toast({
+        title: 'Introduce tu email',
+        description: 'Necesitamos tu email para enviarte el enlace de recuperación.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsResetSubmitting(true);
+
+    try {
+      await requestPasswordReset(email);
+
+      const nextCooldownUntil = Date.now() + PASSWORD_RESET_COOLDOWN_SECONDS * 1000;
+      setCurrentTimestamp(Date.now());
+      setResetCooldownUntil(nextCooldownUntil);
+
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(PASSWORD_RESET_COOLDOWN_STORAGE_KEY, String(nextCooldownUntil));
+      }
+
+      toast({
+        title: 'Correo enviado',
+        description: 'Te hemos enviado un enlace para restablecer tu contraseña.',
+      });
+
+      setLoginValues((current) => ({ ...current, email }));
+      setIsResetDialogOpen(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Inténtalo de nuevo en unos minutos.';
+
+      if (message.toLowerCase().includes('rate limit')) {
+        const nextCooldownUntil = Date.now() + PASSWORD_RESET_COOLDOWN_SECONDS * 1000;
+        setCurrentTimestamp(Date.now());
+        setResetCooldownUntil(nextCooldownUntil);
+
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(PASSWORD_RESET_COOLDOWN_STORAGE_KEY, String(nextCooldownUntil));
+        }
+      }
+
+      toast({
+        title: 'No se pudo enviar el correo',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsResetSubmitting(false);
     }
   };
 
@@ -140,6 +269,61 @@ function AuthPageContent() {
     }
   };
 
+  const handleSetNewPassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const password = newPasswordValues.password.trim();
+    const confirmPassword = newPasswordValues.confirmPassword.trim();
+
+    if (!password || !confirmPassword) {
+      toast({
+        title: 'Completa los campos',
+        description: 'Introduce y confirma tu nueva contraseña.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (password.length < 8) {
+      toast({
+        title: 'Contraseña demasiado corta',
+        description: 'La nueva contraseña debe tener al menos 8 caracteres.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      toast({
+        title: 'Las contraseñas no coinciden',
+        description: 'Asegúrate de escribir la misma contraseña en ambos campos.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+
+    try {
+      await updatePassword(password);
+      setNewPasswordValues({ password: '', confirmPassword: '' });
+      setIsRecoveryMode(false);
+      toast({
+        title: 'Contraseña actualizada',
+        description: 'Tu contraseña se ha cambiado correctamente.',
+      });
+      router.replace(nextPath);
+    } catch (error) {
+      toast({
+        title: 'No se pudo actualizar la contraseña',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
+
   if (!isReady || isLoadingAuth) {
     return <AuthPageFallback />;
   }
@@ -192,6 +376,55 @@ function AuthPageContent() {
                 </Alert>
               )}
 
+              {isRecoveryMode ? (
+                <div className="space-y-4">
+                  <Alert>
+                    <Mail className="h-4 w-4" />
+                    <AlertTitle>Define tu nueva contraseña</AlertTitle>
+                    <AlertDescription>
+                      Por seguridad, crea una contraseña nueva para terminar la recuperación de tu cuenta.
+                    </AlertDescription>
+                  </Alert>
+
+                  <form onSubmit={handleSetNewPassword} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="new-password">Nueva contraseña</Label>
+                      <Input
+                        id="new-password"
+                        type="password"
+                        autoComplete="new-password"
+                        value={newPasswordValues.password}
+                        onChange={(event) => setNewPasswordValues((current) => ({ ...current, password: event.target.value }))}
+                        placeholder="Mínimo 8 caracteres"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="new-password-confirm">Repetir nueva contraseña</Label>
+                      <Input
+                        id="new-password-confirm"
+                        type="password"
+                        autoComplete="new-password"
+                        value={newPasswordValues.confirmPassword}
+                        onChange={(event) => setNewPasswordValues((current) => ({ ...current, confirmPassword: event.target.value }))}
+                        placeholder="Repite la nueva contraseña"
+                      />
+                    </div>
+                    {!isAuthenticated && (
+                      <p className="text-sm text-muted-foreground">
+                        Abre este flujo desde el enlace del email de recuperación para poder actualizar la contraseña.
+                      </p>
+                    )}
+                    <Button type="submit" className="w-full" disabled={!isConfigured || !isAuthenticated || isUpdatingPassword}>
+                      {isUpdatingPassword ? <LoaderCircle className="w-4 h-4 animate-spin" /> : null}
+                      Guardar nueva contraseña
+                    </Button>
+                  </form>
+
+                  <Button type="button" variant="link" className="h-auto px-0 text-sm" onClick={() => setIsRecoveryMode(false)}>
+                    Volver al login
+                  </Button>
+                </div>
+              ) : (
               <Tabs defaultValue={initialTab} className="w-full">
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="login">Login</TabsTrigger>
@@ -222,11 +455,63 @@ function AuthPageContent() {
                         placeholder="••••••••"
                       />
                     </div>
+                    <div className="flex justify-end">
+                      <Button
+                        type="button"
+                        variant="link"
+                        className="h-auto px-0 text-sm"
+                        onClick={handleOpenPasswordReset}
+                        disabled={!isConfigured || isResetSubmitting || isResetOnCooldown}
+                      >
+                        {isResetOnCooldown ? `Reenviar en ${resetCooldownSecondsRemaining}s` : '¿Olvidaste tu contraseña?'}
+                      </Button>
+                    </div>
                     <Button type="submit" className="w-full" disabled={!isConfigured || isSubmitting === 'login'}>
                       {isSubmitting === 'login' ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
                       Entrar
                     </Button>
                   </form>
+
+                  <Dialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Restablecer contraseña</DialogTitle>
+                        <DialogDescription>
+                          Introduce el email de tu cuenta y te enviaremos un enlace para restablecer tu contraseña.
+                        </DialogDescription>
+                      </DialogHeader>
+
+                      <form onSubmit={handlePasswordReset} className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="reset-email">Email</Label>
+                          <Input
+                            id="reset-email"
+                            type="email"
+                            autoComplete="email"
+                            autoFocus
+                            value={resetEmail}
+                            onChange={(event) => setResetEmail(event.target.value)}
+                            placeholder="tu@email.com"
+                          />
+                        </div>
+
+                        <DialogFooter>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setIsResetDialogOpen(false)}
+                            disabled={isResetSubmitting}
+                          >
+                            Cancelar
+                          </Button>
+                          <Button type="submit" disabled={!isConfigured || isResetSubmitting || isResetOnCooldown}>
+                            {isResetSubmitting ? <LoaderCircle className="w-4 h-4 animate-spin" /> : null}
+                            {isResetOnCooldown ? `Espera ${resetCooldownSecondsRemaining}s` : 'Enviar enlace'}
+                          </Button>
+                        </DialogFooter>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
                 </TabsContent>
 
                 <TabsContent value="register" className="space-y-4">
@@ -283,6 +568,7 @@ function AuthPageContent() {
                   </form>
                 </TabsContent>
               </Tabs>
+              )}
             </CardContent>
           </Card>
         </section>

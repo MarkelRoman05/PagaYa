@@ -114,6 +114,7 @@ interface PagaYaContextValue extends AppState {
   setTheme: (theme: Theme) => Promise<void>;
   signIn: (credentials: AuthCredentials) => Promise<void>;
   signUp: (credentials: RegisterCredentials) => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshData: (options?: RefreshDataOptions) => Promise<void>;
   refreshDeviceSessions: () => Promise<void>;
@@ -424,7 +425,14 @@ function getDeviceLabel(browser: string, os: string, userAgent: string, fallback
 
 function getFriendlyErrorMessage(error: unknown, fallback: string) {
   if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
-    return error.message;
+    const normalizedMessage = error.message.trim();
+    const lowerCaseMessage = normalizedMessage.toLowerCase();
+
+    if (lowerCaseMessage.includes('email rate limit exceeded') || lowerCaseMessage.includes('rate limit exceeded')) {
+      return 'Has solicitado demasiados correos de recuperación. Espera 60 segundos y vuelve a intentarlo.';
+    }
+
+    return normalizedMessage;
   }
 
   return fallback;
@@ -1162,6 +1170,42 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const requestPasswordReset = async (email: string) => {
+    const supabase = getSupabaseBrowserClient();
+
+    if (!supabase) {
+      throw new Error('Faltan las variables NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.');
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      throw new Error('Introduce un email válido para recuperar tu contraseña.');
+    }
+
+    const { data: isEmailRegistered, error: emailCheckError } = await supabase.rpc('is_email_registered', {
+      email_input: normalizedEmail,
+    });
+
+    if (emailCheckError) {
+      throw new Error(getFriendlyErrorMessage(emailCheckError, 'No se pudo comprobar si el email existe.'));
+    }
+
+    if (!isEmailRegistered) {
+      throw new Error('No existe ninguna cuenta registrada con ese email.');
+    }
+
+    const redirectTo = typeof window !== 'undefined' ? `${window.location.origin}/auth?mode=reset` : undefined;
+
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+      redirectTo,
+    });
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo enviar el correo de recuperación.'));
+    }
+  };
+
   const signOut = async () => {
     const supabase = getSupabaseBrowserClient();
 
@@ -1875,6 +1919,7 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         setTheme,
         signIn,
         signUp,
+        requestPasswordReset,
         signOut,
         refreshData,
         refreshDeviceSessions,

@@ -26,11 +26,11 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, isConfigured, isLoadingAuth, isReady, pathname, router]);
 
   if (!isReady || isLoadingAuth) {
-    return <AppLoadingScreen title="Comprobando sesion" subtitle="Validando acceso seguro..." />;
+    return <AppLoadingScreen title="Comprobando sesión" subtitle="Validando acceso seguro..." />;
   }
 
   if (!isConfigured || !isAuthenticated) {
-    return <AppLoadingScreen title="Acceso requerido" subtitle="Redirigiendo a la pantalla de autenticacion..." />;
+    return <AppLoadingScreen title="Acceso requerido" subtitle="Redirigiendo a la pantalla de autenticación..." />;
   }
 
   return <>{children}</>;
