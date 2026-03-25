@@ -28,11 +28,32 @@ export default function Home() {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isChangingTheme, setIsChangingTheme] = useState(false);
   const [isNativeApp, setIsNativeApp] = useState<boolean | null>(null);
+  const [isRedirectingToRecovery, setIsRedirectingToRecovery] = useState(false);
   const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
   const username = typeof userMetadata.username === 'string' ? userMetadata.username.trim() : '';
   const avatarUrl = typeof userMetadata.avatar_url === 'string' ? userMetadata.avatar_url.trim() : '';
   const sessionName = username || user?.email?.split('@')[0] || 'usuario';
   const avatarLetter = sessionName.charAt(0).toUpperCase();
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const queryParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const queryType = queryParams.get('type');
+    const hashType = hashParams.get('type');
+
+    if (queryType !== 'recovery' && hashType !== 'recovery') {
+      return;
+    }
+
+    setIsRedirectingToRecovery(true);
+
+    const hash = window.location.hash || '';
+    router.replace(`/auth?mode=reset${hash}`);
+  }, [router]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -102,6 +123,10 @@ export default function Home() {
 
   if (isNativeApp === null) {
     return <AppLoadingScreen title="Iniciando PagaYa" subtitle="Preparando la experiencia movil..." />;
+  }
+
+  if (isRedirectingToRecovery) {
+    return <AppLoadingScreen title="Recuperando cuenta" subtitle="Redirigiendo al formulario de nueva contraseña..." />;
   }
 
   if (isNativeApp) {
