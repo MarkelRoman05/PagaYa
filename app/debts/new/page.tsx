@@ -93,7 +93,7 @@ export default function NewDebt() {
         description: "La deuda ya aparece en tu panel principal.",
       });
 
-      router.push("/dashboard");
+      router.push("/debts");
     } catch (error) {
       toast({
         title: "No se pudo registrar",
@@ -118,7 +118,7 @@ export default function NewDebt() {
         <main className="container mx-auto max-w-xl px-4 py-6 sm:px-6 sm:py-8">
           <div className="mb-6">
             <Button asChild variant="ghost" size="sm" className="-ml-2">
-              <Link href="/dashboard" className="flex items-center gap-1">
+              <Link href="/debts" className="flex items-center gap-1">
                 <ChevronLeft className="w-4 h-4" />
                 Volver
               </Link>

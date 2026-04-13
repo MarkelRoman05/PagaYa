@@ -372,7 +372,7 @@ export default function ProfilePage() {
               <CardHeader>
                 <CardTitle>Editar perfil</CardTitle>
                 <CardDescription>
-                  Aquí puedes cambiar tu username y avatar en la app de PagaYa.
+                  Aquí puedes cambiar tus datos en la app de PagaYa.
                 </CardDescription>
               </CardHeader>
               <CardContent>

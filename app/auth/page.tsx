@@ -47,7 +47,7 @@ function AuthPageContent() {
   const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
   const initialTab = searchParams.get('tab') === 'register' ? 'register' : 'login';
-  const nextPath = searchParams.get('next') || '/dashboard';
+  const nextPath = searchParams.get('next') || '/debts';
   const resetCooldownSecondsRemaining = Math.max(0, Math.ceil((resetCooldownUntil - currentTimestamp) / 1000));
   const isResetOnCooldown = resetCooldownSecondsRemaining > 0;
 

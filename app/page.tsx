@@ -90,7 +90,7 @@ export default function Home() {
       return;
     }
 
-    router.replace('/dashboard');
+    router.replace('/debts');
   }, [isAuthenticated, isNativeApp, router]);
 
   const handleSignOut = async () => {
@@ -179,7 +179,7 @@ export default function Home() {
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild className="cursor-pointer rounded-md px-2.5 py-2 font-medium data-[highlighted]:bg-primary/15 data-[highlighted]:text-foreground">
-                    <Link href="/dashboard">Ir a mi panel</Link>
+                    <Link href="/debts">Ir a mi panel</Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuLabel className="px-2.5 pb-1 pt-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">Preferencia de tema</DropdownMenuLabel>
@@ -239,7 +239,7 @@ export default function Home() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4">
             <Button asChild size="lg" className="rounded-full px-8 h-14 text-lg">
-              <Link href={isAuthenticated ? '/dashboard' : '/auth'} className="flex items-center gap-2">
+              <Link href={isAuthenticated ? '/debts' : '/auth'} className="flex items-center gap-2">
                 {isAuthenticated ? 'Ir a mi panel' : 'Empezar ahora'} <ArrowRight className="w-5 h-5" />
               </Link>
             </Button>

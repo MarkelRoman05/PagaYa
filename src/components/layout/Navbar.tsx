@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Home,
+  Wallet,
   Users,
   History,
   CircleUser,
@@ -122,7 +122,7 @@ export function Navbar() {
   const displayName = username || user?.email?.split("@")[0] || "usuario";
 
   const navItems = [
-    { name: "Inicio", href: "/dashboard", icon: Home },
+    { name: "Deudas", href: "/debts", icon: Wallet },
     { name: "Amigos", href: "/friends", icon: Users },
     { name: "Historial", href: "/history", icon: History },
     { name: "Perfil", href: "/profile", icon: CircleUser },
@@ -190,8 +190,8 @@ export function Navbar() {
       >
         <div className="container mx-auto flex h-16 max-w-6xl items-center justify-between px-3 sm:px-4">
           <Link
-            href="/dashboard"
-            aria-label="Ir al inicio"
+            href="/debts"
+            aria-label="Ir a deudas"
             className="flex items-center gap-2 font-bold text-primary text-xl"
           >
             <Image

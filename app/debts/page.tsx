@@ -65,7 +65,7 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {isLoadingData && <InlineLoadingNotice message="Sincronizando tus datos con Supabase..." />}
+        {isLoadingData && <InlineLoadingNotice message="Cargando tus deudas..." />}
 
         <section className="mb-8 grid gap-4 md:grid-cols-2">
           <Card className="bg-primary text-white overflow-hidden relative">
