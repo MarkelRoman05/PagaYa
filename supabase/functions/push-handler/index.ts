@@ -323,12 +323,31 @@ Deno.serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY");
     const firebaseServiceAccountJsonBase64 = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON_BASE64");
+    const firebaseServiceAccountJson = Deno.env.get("FIREBASE_SERVICE_ACCOUNT_JSON");
 
-    if (!supabaseUrl || !serviceRoleKey || !firebaseServiceAccountJsonBase64) {
-      throw new Error("Missing required secrets: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, FIREBASE_SERVICE_ACCOUNT_JSON_BASE64");
+    if (!supabaseUrl || !serviceRoleKey || (!firebaseServiceAccountJsonBase64 && !firebaseServiceAccountJson)) {
+      throw new Error("Missing required secrets: SUPABASE_URL, SERVICE_ROLE_KEY, FIREBASE_SERVICE_ACCOUNT_JSON_BASE64 or FIREBASE_SERVICE_ACCOUNT_JSON");
     }
 
-    const serviceAccount = JSON.parse(atob(firebaseServiceAccountJsonBase64));
+    function decodeFirebaseSecret(raw: string): string {
+      const cleaned = raw.trim().replace(/\s+/g, "");
+      try {
+        return atob(cleaned);
+      } catch {
+        return raw;
+      }
+    }
+
+    let serviceAccount: any;
+    const rawServiceAccount = firebaseServiceAccountJson ?? firebaseServiceAccountJsonBase64!;
+    const decodedServiceAccount = firebaseServiceAccountJson ? rawServiceAccount : decodeFirebaseSecret(rawServiceAccount);
+
+    try {
+      serviceAccount = JSON.parse(decodedServiceAccount);
+    } catch (parseError) {
+      const preview = decodedServiceAccount.slice(0, 200);
+      throw new Error(`Invalid Firebase service account JSON. Parsed payload preview: ${preview}`);
+    }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey, {
       auth: {
