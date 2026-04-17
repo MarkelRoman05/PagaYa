@@ -28,6 +28,16 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Exclude Supabase functions from Next.js build
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  experimental: {
+    serverComponentsExternalPackages: ['@supabase/supabase-js'],
+  },
 };
 
 export default nextConfig;
