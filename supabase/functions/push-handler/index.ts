@@ -329,15 +329,28 @@ Deno.serve(async (req: Request) => {
       throw new Error("Missing required secrets: SUPABASE_URL, SERVICE_ROLE_KEY, FIREBASE_SERVICE_ACCOUNT_JSON_BASE64 or FIREBASE_SERVICE_ACCOUNT_JSON");
     }
 
+    function normalizeBase64(raw: string): string {
+      const cleaned = raw.trim().replace(/\s+/g, "");
+      const base64 = cleaned.replace(/-/g, "+").replace(/_/g, "/");
+      const padding = base64.length % 4;
+      return padding === 0 ? base64 : `${base64}${"=".repeat(4 - padding)}`;
+    }
+
     function parseFirebaseServiceAccount(raw: string): any {
       const trimmed = raw.trim();
 
-      if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      if (trimmed.startsWith("{")) {
         return JSON.parse(trimmed);
       }
 
-      const cleanedBase64 = trimmed.replace(/\s+/g, "");
-      return JSON.parse(atob(cleanedBase64));
+      const decoded = atob(normalizeBase64(trimmed));
+      const decodedTrimmed = decoded.trim();
+
+      if (decodedTrimmed.startsWith("{")) {
+        return JSON.parse(decodedTrimmed);
+      }
+
+      return JSON.parse(decoded);
     }
 
     let serviceAccount: any;
