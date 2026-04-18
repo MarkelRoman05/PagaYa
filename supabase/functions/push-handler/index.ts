@@ -128,6 +128,7 @@ async function markTokensActive(supabase: any, tokens: string[]) {
 }
 
 const NO_TOKEN_RETRY_DELAYS_MS = [1500, 3500];
+const INACTIVE_FALLBACK_MAX_AGE_MS = 2 * 60 * 1000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -153,7 +154,7 @@ async function getActiveAndroidTokens(supabase: any, userId: string): Promise<st
 async function getRecentAndroidTokensAnyStatus(supabase: any, userId: string): Promise<string[]> {
   const { data, error } = await supabase
     .from("user_push_tokens")
-    .select("token,last_seen_at")
+    .select("token,last_seen_at,is_active")
     .eq("user_id", userId)
     .eq("platform", "android")
     .order("last_seen_at", { ascending: false })
@@ -163,9 +164,32 @@ async function getRecentAndroidTokensAnyStatus(supabase: any, userId: string): P
     throw new Error(`No se pudieron obtener tokens recientes de ${userId}: ${error.message}`);
   }
 
+  const now = Date.now();
+
   return (data ?? [])
+    .filter((row: any) => row.is_active === false)
+    .filter((row: any) => {
+      const seenAt = typeof row.last_seen_at === "string" ? Date.parse(row.last_seen_at) : NaN;
+      return Number.isFinite(seenAt) && now - seenAt <= INACTIVE_FALLBACK_MAX_AGE_MS;
+    })
     .map((row: any) => row.token)
     .filter((token: string | null | undefined) => typeof token === "string" && token.length > 0);
+}
+
+function summarizeFailureCodes(responses: any[]): string {
+  const counter = new Map<string, number>();
+
+  for (const response of responses) {
+    if (isSuccessfulFcmResponse(response)) continue;
+    const code = typeof response?.error?.code === "string" && response.error.code.length > 0
+      ? response.error.code
+      : "UNKNOWN_ERROR";
+    counter.set(code, (counter.get(code) ?? 0) + 1);
+  }
+
+  return Array.from(counter.entries())
+    .map(([code, count]) => `${code}:${count}`)
+    .join(",");
 }
 
 async function getTokenDiagnostics(supabase: any, userId: string): Promise<string> {
@@ -421,7 +445,9 @@ async function dispatchNotification(supabase: any, row: any, serviceAccount: any
   }
 
   if (invalidTokenFailures > 0 && realFailures === 0) {
-    await markAsFailed(supabase, row.id, "NO_VALID_ANDROID_TOKENS", row.push_attempts ?? 0);
+    const codeSummary = summarizeFailureCodes(result.responses);
+    const reason = `NO_VALID_ANDROID_TOKENS:${codeSummary || "none"}`;
+    await markAsFailed(supabase, row.id, reason.slice(0, 280), row.push_attempts ?? 0);
     return { sent: false, reason: "no_valid_tokens" };
   }
 
