@@ -2,9 +2,19 @@
 // https://deno.land/manual/getting_started/setup_your_environment
 // This enables autocomplete, go to definition, etc.
 
-// Setup type definitions for built-in Supabase Runtime APIs
-/// <reference types="https://esm.sh/@supabase/functions-js/src/edge-runtime.d.ts" />
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+/// <reference lib="dom" />
+/// <reference lib="dom.iterable" />
+/// <reference lib="esnext" />
+
+declare const Deno: {
+  env: {
+    get(name: string): string | undefined;
+  };
+  serve(handler: (req: any) => any): void;
+};
+
+import { createClient } from "@supabase/supabase-js";
+// @ts-ignore - Supabase Edge Functions require the .ts extension for local bundled imports.
 import { corsHeaders } from "../_shared/cors.ts";
 
 interface WebhookPayload {
@@ -34,6 +44,19 @@ interface FCMError {
     message: string;
     details: any[];
   };
+}
+
+function isInvalidFcmTokenError(code: string): boolean {
+  return (
+    code.includes("registration-token-not-registered")
+    || code.includes("invalid-registration-token")
+    || code.includes("UNREGISTERED")
+    || code.includes("NOT_FOUND")
+  );
+}
+
+function isSuccessfulFcmResponse(response: any): boolean {
+  return response?.success === true;
 }
 
 function compactError(error: any): string {
@@ -88,8 +111,87 @@ async function markTokensInactive(supabase: any, tokens: string[]) {
   }
 }
 
-async function sendFCMMessage(accessToken: string, payload: any): Promise<{ successCount: number; failureCount: number; responses: any[] }> {
-  const fcmUrl = "https://fcm.googleapis.com/v1/projects/pagaya-app/messages:send";
+async function markTokensActive(supabase: any, tokens: string[]) {
+  if (tokens.length === 0) return;
+
+  const { error } = await supabase
+    .from("user_push_tokens")
+    .update({
+      is_active: true,
+      last_seen_at: new Date().toISOString(),
+    })
+    .in("token", tokens);
+
+  if (error) {
+    throw new Error(`No se pudieron activar tokens validos: ${error.message}`);
+  }
+}
+
+const NO_TOKEN_RETRY_DELAYS_MS = [1500, 3500];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function getActiveAndroidTokens(supabase: any, userId: string): Promise<string[]> {
+  const { data: tokenRows, error: tokenError } = await supabase
+    .from("user_push_tokens")
+    .select("token")
+    .eq("user_id", userId)
+    .eq("platform", "android")
+    .eq("is_active", true);
+
+  if (tokenError) {
+    throw new Error(`No se pudieron obtener tokens de ${userId}: ${tokenError.message}`);
+  }
+
+  return (tokenRows ?? [])
+    .map((tokenRow: any) => tokenRow.token)
+    .filter((token: string | null | undefined) => typeof token === "string" && token.length > 0);
+}
+
+async function getRecentAndroidTokensAnyStatus(supabase: any, userId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("user_push_tokens")
+    .select("token,last_seen_at")
+    .eq("user_id", userId)
+    .eq("platform", "android")
+    .order("last_seen_at", { ascending: false })
+    .limit(5);
+
+  if (error) {
+    throw new Error(`No se pudieron obtener tokens recientes de ${userId}: ${error.message}`);
+  }
+
+  return (data ?? [])
+    .map((row: any) => row.token)
+    .filter((token: string | null | undefined) => typeof token === "string" && token.length > 0);
+}
+
+async function getTokenDiagnostics(supabase: any, userId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from("user_push_tokens")
+    .select("platform,is_active,last_seen_at")
+    .eq("user_id", userId)
+    .order("last_seen_at", { ascending: false })
+    .limit(50);
+
+  if (error) {
+    return `diag_error:${error.message}`;
+  }
+
+  const rows = data ?? [];
+  const total = rows.length;
+  const activeAndroid = rows.filter((row: any) => row.platform === "android" && row.is_active).length;
+  const inactiveAndroid = rows.filter((row: any) => row.platform === "android" && !row.is_active).length;
+  const activeOther = rows.filter((row: any) => row.platform !== "android" && row.is_active).length;
+  const lastSeen = rows[0]?.last_seen_at ?? "none";
+
+  return `total=${total};active_android=${activeAndroid};inactive_android=${inactiveAndroid};active_other=${activeOther};last_seen=${lastSeen}`;
+}
+
+async function sendFCMMessage(accessToken: string, projectId: string, payload: any): Promise<{ successCount: number; failureCount: number; responses: any[] }> {
+  const fcmUrl = `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
 
   const responses: any[] = [];
   let successCount = 0;
@@ -168,19 +270,25 @@ async function getFCMAccessToken(serviceAccount: any): Promise<string> {
   const payloadB64 = btoa(JSON.stringify(jwtPayload)).replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
 
   const message = `${headerB64}.${payloadB64}`;
+  const pemToPkcs8Der = (pem: string): ArrayBuffer => {
+    const base64 = pem
+      .replace(/-----BEGIN PRIVATE KEY-----/g, "")
+      .replace(/-----END PRIVATE KEY-----/g, "")
+      .replace(/\s+/g, "");
+
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let index = 0; index < binary.length; index++) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+
+    return bytes.buffer;
+  };
+
   const key = await crypto.subtle.importKey(
-    "jwk",
-    {
-      kty: "RSA",
-      n: serviceAccount.private_key.split("-----BEGIN PRIVATE KEY-----\n")[1].split("\n-----END PRIVATE KEY-----")[0].replace(/\n/g, "").replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, ""),
-      e: "AQAB",
-      d: serviceAccount.private_key.split("-----BEGIN PRIVATE KEY-----\n")[1].split("\n-----END PRIVATE KEY-----")[0].replace(/\n/g, "").replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, ""),
-      p: "",
-      q: "",
-      dp: "",
-      dq: "",
-      qi: "",
-    },
+    "pkcs8",
+    pemToPkcs8Der(serviceAccount.private_key),
     {
       name: "RSASSA-PKCS1-v1_5",
       hash: "SHA-256",
@@ -219,23 +327,37 @@ async function dispatchNotification(supabase: any, row: any, serviceAccount: any
     return { sent: false, reason: "push_disabled" };
   }
 
-  const { data: tokenRows, error: tokenError } = await supabase
-    .from("user_push_tokens")
-    .select("token")
-    .eq("user_id", row.user_id)
-    .eq("platform", "android")
-    .eq("is_active", true);
-
-  if (tokenError) {
-    throw new Error(`No se pudieron obtener tokens de ${row.user_id}: ${tokenError.message}`);
+  if (!serviceAccount?.project_id) {
+    throw new Error("Firebase service account missing project_id.");
   }
 
-  const tokens = (tokenRows ?? [])
-    .map((tokenRow: any) => tokenRow.token)
-    .filter((token: string | null | undefined) => typeof token === "string" && token.length > 0);
+  let tokens = await getActiveAndroidTokens(supabase, row.user_id);
 
   if (tokens.length === 0) {
-    await markAsFailed(supabase, row.id, "NO_ACTIVE_ANDROID_TOKENS", row.push_attempts ?? 0);
+    for (const retryDelay of NO_TOKEN_RETRY_DELAYS_MS) {
+      await sleep(retryDelay);
+      tokens = await getActiveAndroidTokens(supabase, row.user_id);
+      if (tokens.length > 0) {
+        break;
+      }
+    }
+  }
+
+  let usingInactiveFallback = false;
+
+  if (tokens.length === 0) {
+    const recentTokens = await getRecentAndroidTokensAnyStatus(supabase, row.user_id);
+    if (recentTokens.length > 0) {
+      tokens = recentTokens;
+      usingInactiveFallback = true;
+      console.warn(`[push-handler] using_inactive_fallback notification=${row.id} user=${row.user_id} token_count=${tokens.length}`);
+    }
+  }
+
+  if (tokens.length === 0) {
+    const diagnostics = await getTokenDiagnostics(supabase, row.user_id);
+    console.warn(`[push-handler] no_tokens notification=${row.id} user=${row.user_id} diagnostics=${diagnostics}`);
+    await markAsFailed(supabase, row.id, `NO_ACTIVE_ANDROID_TOKENS_AFTER_RETRY:${diagnostics}`.slice(0, 280), row.push_attempts ?? 0);
     return { sent: false, reason: "no_tokens" };
   }
 
@@ -260,21 +382,34 @@ async function dispatchNotification(supabase: any, row: any, serviceAccount: any
     tokens,
   };
 
-  const result = await sendFCMMessage(accessToken, payload);
+  const result = await sendFCMMessage(accessToken, serviceAccount.project_id, payload);
   const invalidTokens: string[] = [];
+  let invalidTokenFailures = 0;
+  let realFailures = 0;
 
   result.responses.forEach((response: any, index: number) => {
-    if (!response.success) {
-      const code = response.error?.code ?? "";
-      if (
-        code.includes("registration-token-not-registered") ||
-        code.includes("invalid-registration-token") ||
-        code.includes("UNREGISTERED")
-      ) {
+    if (!isSuccessfulFcmResponse(response)) {
+      const code = response?.error?.code ?? "";
+      if (isInvalidFcmTokenError(code)) {
         invalidTokens.push(tokens[index]);
+        invalidTokenFailures++;
+      } else {
+        realFailures++;
       }
     }
   });
+
+  if (usingInactiveFallback) {
+    const successfulTokens: string[] = [];
+    result.responses.forEach((response: any, index: number) => {
+      if (isSuccessfulFcmResponse(response)) {
+        successfulTokens.push(tokens[index]);
+      }
+    });
+    if (successfulTokens.length > 0) {
+      await markTokensActive(supabase, successfulTokens);
+    }
+  }
 
   if (invalidTokens.length > 0) {
     await markTokensInactive(supabase, invalidTokens);
@@ -283,6 +418,11 @@ async function dispatchNotification(supabase: any, row: any, serviceAccount: any
   if (result.successCount > 0) {
     await markAsDelivered(supabase, row.id, row.push_attempts ?? 0);
     return { sent: true, successCount: result.successCount, failureCount: result.failureCount };
+  }
+
+  if (invalidTokenFailures > 0 && realFailures === 0) {
+    await markAsFailed(supabase, row.id, "NO_VALID_ANDROID_TOKENS", row.push_attempts ?? 0);
+    return { sent: false, reason: "no_valid_tokens" };
   }
 
   const firstError = compactError(result.responses[0]?.error);

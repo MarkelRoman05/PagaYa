@@ -1027,6 +1027,13 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
 
         await cleanupListeners();
 
+        // Force token rotation so stale/invalid FCM tokens are replaced.
+        try {
+          await PushNotifications.unregister();
+        } catch (error) {
+          console.warn('No se pudo forzar rotacion del token push en Android', error);
+        }
+
         await PushNotifications.addListener('registration', async (token) => {
           if (cancelled) {
             return;
