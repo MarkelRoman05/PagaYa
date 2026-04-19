@@ -21,6 +21,7 @@ type SendInvitationInput = {
 };
 
 const AVATAR_BUCKET = 'avatars';
+const NATIVE_OAUTH_NEXT_PATH_KEY = 'pagaya.nativeOAuth.nextPath';
 
 interface FriendRow {
   id: string;
@@ -444,6 +445,11 @@ function getFriendlyErrorMessage(error: unknown, fallback: string) {
 }
 
 function buildAuthRedirectUrl(nextPath: string, authProvider: string, authIntent?: string) {
+  if (Capacitor.isNativePlatform()) {
+    // Use exact deep link to maximize compatibility with Supabase allowlist matching.
+    return 'com.markel.pagaya://auth/callback';
+  }
+
   const normalizedNextPath = nextPath.startsWith('/') ? nextPath : `/${nextPath}`;
   const params = new URLSearchParams();
 
@@ -452,10 +458,6 @@ function buildAuthRedirectUrl(nextPath: string, authProvider: string, authIntent
 
   if (authIntent) {
     params.set('authIntent', authIntent);
-  }
-
-  if (Capacitor.isNativePlatform()) {
-    return `com.markel.pagaya://auth/callback?${params.toString()}`;
   }
 
   return `${window.location.origin}/auth?${params.toString()}`;
@@ -918,7 +920,10 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       const code = queryParams.get('code');
       const accessToken = hashParams.get('access_token') ?? queryParams.get('access_token');
       const refreshToken = hashParams.get('refresh_token') ?? queryParams.get('refresh_token');
-      const nextPath = queryParams.get('next') || '/auth';
+      const storedNextPath = typeof window !== 'undefined'
+        ? window.sessionStorage.getItem(NATIVE_OAUTH_NEXT_PATH_KEY)
+        : null;
+      const nextPath = queryParams.get('next') || storedNextPath || '/auth';
 
       try {
         if (code) {
@@ -939,6 +944,7 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         }
 
         if (typeof window !== 'undefined') {
+          window.sessionStorage.removeItem(NATIVE_OAUTH_NEXT_PATH_KEY);
           window.location.href = nextPath;
         }
       } catch (error) {
@@ -1214,6 +1220,11 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
 
     const isNative = Capacitor.isNativePlatform();
 
+    if (isNative && typeof window !== 'undefined') {
+      const normalizedNextPath = nextPath.startsWith('/') ? nextPath : `/${nextPath}`;
+      window.sessionStorage.setItem(NATIVE_OAUTH_NEXT_PATH_KEY, normalizedNextPath);
+    }
+
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
@@ -1245,6 +1256,11 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       : undefined;
 
     const isNative = Capacitor.isNativePlatform();
+
+    if (isNative && typeof window !== 'undefined') {
+      const normalizedNextPath = nextPath.startsWith('/') ? nextPath : `/${nextPath}`;
+      window.sessionStorage.setItem(NATIVE_OAUTH_NEXT_PATH_KEY, normalizedNextPath);
+    }
 
     const { data, error } = await supabase.auth.linkIdentity({
       provider: 'google',
