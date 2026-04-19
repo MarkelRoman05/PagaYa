@@ -3,6 +3,7 @@ import type {NextConfig} from 'next';
 const isStaticExport = process.env.NEXT_STATIC_EXPORT === 'true';
 
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: process.cwd(),
   output: isStaticExport ? 'export' : undefined,
   trailingSlash: isStaticExport,
   images: {
@@ -35,9 +36,7 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
-  experimental: {
-    serverComponentsExternalPackages: ['@supabase/supabase-js'],
-  },
+  serverExternalPackages: ['@supabase/supabase-js'],
 };
 
 export default nextConfig;
