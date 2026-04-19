@@ -270,19 +270,19 @@ export function Navbar() {
                 </SheetTrigger>
                 <SheetContent
                   side="right"
-                  className="w-full sm:max-w-md"
+                  className="flex h-[100dvh] w-full flex-col overflow-hidden sm:max-w-md"
                   style={{
                     paddingTop: "calc(var(--safe-area-top) + 1rem)",
                     paddingBottom: "calc(var(--safe-area-bottom) + 1rem)",
                   }}
                 >
-                  <SheetHeader>
+                  <SheetHeader className="shrink-0">
                     <SheetTitle>Notificaciones</SheetTitle>
                     <SheetDescription>
                       Actividad reciente de tu cuenta.
                     </SheetDescription>
                   </SheetHeader>
-                  <div className="mt-6">
+                  <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-1">
                     <NotificationList
                       notifications={visibleNotifications}
                       onToggleRead={handleToggleRead}

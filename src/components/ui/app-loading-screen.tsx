@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect } from 'react';
 import { LoaderCircle, Wallet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -12,8 +15,44 @@ export function AppLoadingScreen({
   subtitle = 'Cargando la informacion necesaria...',
   className,
 }: AppLoadingScreenProps) {
+  useEffect(() => {
+    const scrollY = window.scrollY;
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousBodyPosition = document.body.style.position;
+    const previousBodyTop = document.body.style.top;
+    const previousBodyWidth = document.body.style.width;
+    const previousBodyLeft = document.body.style.left;
+    const previousBodyRight = document.body.style.right;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverscrollBehavior = document.body.style.overscrollBehavior;
+    const previousHtmlOverscrollBehavior = document.documentElement.style.overscrollBehavior;
+
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = '100%';
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overscrollBehavior = 'none';
+    document.documentElement.style.overscrollBehavior = 'none';
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.body.style.position = previousBodyPosition;
+      document.body.style.top = previousBodyTop;
+      document.body.style.width = previousBodyWidth;
+      document.body.style.left = previousBodyLeft;
+      document.body.style.right = previousBodyRight;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overscrollBehavior = previousBodyOverscrollBehavior;
+      document.documentElement.style.overscrollBehavior = previousHtmlOverscrollBehavior;
+      window.scrollTo({ top: scrollY, left: 0, behavior: 'auto' });
+    };
+  }, []);
+
   return (
-    <div className={cn('relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-6', className)}>
+    <div className={cn('fixed inset-0 z-[120] flex h-[100dvh] w-full touch-none items-center justify-center overflow-hidden bg-background px-6', className)}>
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -left-16 -top-20 h-56 w-56 rounded-full bg-primary/15 blur-3xl" />
         <div className="absolute -bottom-24 right-0 h-64 w-64 rounded-full bg-secondary/10 blur-3xl" />
