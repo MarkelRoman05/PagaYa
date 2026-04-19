@@ -186,6 +186,50 @@ function AuthPageContent() {
   }, [searchParams]);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const queryParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const authProvider = queryParams.get("authProvider");
+    const hasOAuthPayload =
+      authProvider === "google" ||
+      Boolean(queryParams.get("code")) ||
+      Boolean(hashParams.get("access_token"));
+
+    if (!hasOAuthPayload) {
+      return;
+    }
+
+    const capacitor = (
+      window as Window & {
+        Capacitor?: {
+          isNativePlatform?: () => boolean;
+          getPlatform?: () => string;
+        };
+      }
+    ).Capacitor;
+
+    const isNativeByProtocol =
+      window.location.protocol === "capacitor:" ||
+      window.location.protocol === "ionic:";
+    const isNativeByApi =
+      typeof capacitor?.isNativePlatform === "function"
+        ? capacitor.isNativePlatform()
+        : typeof capacitor?.getPlatform === "function"
+          ? capacitor.getPlatform() !== "web"
+          : false;
+
+    if (isNativeByProtocol || isNativeByApi) {
+      return;
+    }
+
+    const deepLinkTarget = `com.markel.pagaya://auth/callback${window.location.search}${window.location.hash}`;
+    window.location.replace(deepLinkTarget);
+  }, [searchParams]);
+
+  useEffect(() => {
     if (!isReady || isLoadingAuth) {
       return;
     }
