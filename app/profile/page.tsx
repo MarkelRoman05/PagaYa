@@ -1,6 +1,7 @@
 "use client"
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { Navbar } from '@/components/layout/Navbar';
 import { usePagaYa } from '@/hooks/use-pagaya';
@@ -15,6 +16,7 @@ import { Clock3, Laptop, LogOut, Moon, RefreshCw, Smartphone, Sun, LoaderCircle 
 import { useToast } from '@/hooks/use-toast';
 import type { DeviceSession, NotificationType, Theme } from '@/lib/types';
 import { AppLoadingScreen } from '@/components/ui/app-loading-screen';
+import { getSupabaseBrowserClient } from '@/lib/supabase';
 
 const NOTIFICATION_PREFERENCE_ITEMS: Array<{ type: NotificationType; label: string; description: string }> = [
   {
@@ -54,6 +56,8 @@ const NOTIFICATION_PREFERENCE_ITEMS: Array<{ type: NotificationType; label: stri
   },
 ];
 
+const GOOGLE_LINK_TOAST_PENDING_KEY = 'pagaya.googleLinkToastPending';
+
 function formatSessionDate(value: string | undefined) {
   if (!value) {
     return 'Sin datos';
@@ -75,11 +79,28 @@ function DeviceSessionIcon({ deviceSession }: { deviceSession: DeviceSession }) 
   return <Laptop className="w-5 h-5 text-primary" />;
 }
 
+function GoogleLogo({ className = 'w-5 h-5' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path fill="#EA4335" d="M12 10.2v3.9h5.5c-.2 1.3-1.6 3.9-5.5 3.9-3.3 0-6.1-2.8-6.1-6.2s2.7-6.2 6.1-6.2c1.9 0 3.1.8 3.8 1.5l2.6-2.5C16.8 3 14.6 2 12 2 6.9 2 2.8 6.2 2.8 11.3S6.9 20.6 12 20.6c6.9 0 9.1-4.8 9.1-7.2 0-.5 0-.9-.1-1.3H12z" />
+      <path fill="#34A853" d="M2.8 11.3c0 1.6.4 3.1 1.2 4.3l3.1-2.4c-.2-.6-.3-1.2-.3-1.9s.1-1.3.3-1.9L4 7c-.8 1.2-1.2 2.7-1.2 4.3z" />
+      <path fill="#FBBC05" d="M12 20.6c2.6 0 4.8-.8 6.4-2.2l-3-2.3c-.8.6-1.9 1-3.4 1-2.6 0-4.8-1.7-5.6-4.1L3.2 15c1.6 3.2 5 5.6 8.8 5.6z" />
+      <path fill="#4285F4" d="M21.1 12.1c0-.6-.1-1.1-.2-1.6H12v3.9h5.1c-.2 1.1-.9 2-1.7 2.7l3 2.3c1.8-1.7 2.7-4.1 2.7-7.3z" />
+    </svg>
+  );
+}
+
 export default function ProfilePage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const hasShownGoogleLinkedToastRef = useRef(false);
   const {
     user,
     isReady,
     signOut,
+    connectGoogleIdentity,
+    disconnectGoogleIdentity,
     updateUserProfile,
     updatePassword,
     theme,
@@ -104,6 +125,8 @@ export default function ProfilePage() {
   const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
   const [isSubmittingTheme, setIsSubmittingTheme] = useState(false);
   const [isRefreshingDevices, setIsRefreshingDevices] = useState(false);
+  const [isSubmittingGoogleIdentity, setIsSubmittingGoogleIdentity] = useState(false);
+  const [identityProviders, setIdentityProviders] = useState<string[]>([]);
   const [updatingNotificationPreferenceKey, setUpdatingNotificationPreferenceKey] = useState<string | null>(null);
 
   const userMetadata = useMemo(() => (user?.user_metadata ?? {}) as Record<string, unknown>, [user]);
@@ -118,6 +141,83 @@ export default function ProfilePage() {
 
   const displayName = username.trim() || user?.email?.split('@')[0] || 'usuario';
   const effectiveAvatarUrl = avatarPreviewUrl || avatarUrl;
+  const loadIdentityProviders = useCallback(async () => {
+    const supabase = getSupabaseBrowserClient();
+
+    if (!supabase || !user) {
+      setIdentityProviders([]);
+      return;
+    }
+
+    const { data, error } = await supabase.auth.getUserIdentities();
+
+    if (error) {
+      // Fallback to local user identities if request fails.
+      const fallbackProviders = Array.from(
+        new Set(
+          (user.identities ?? [])
+            .map((identity) => identity.provider?.trim().toLowerCase())
+            .filter((provider): provider is string => Boolean(provider)),
+        ),
+      );
+
+      setIdentityProviders(fallbackProviders);
+      return;
+    }
+
+    const providers = Array.from(
+      new Set(
+        (data.identities ?? [])
+          .map((identity) => identity.provider?.trim().toLowerCase())
+          .filter((provider): provider is string => Boolean(provider)),
+      ),
+    );
+
+    setIdentityProviders(providers);
+  }, [user]);
+
+  useEffect(() => {
+    void loadIdentityProviders();
+  }, [loadIdentityProviders]);
+
+  useEffect(() => {
+    const googleStatus = searchParams.get('google');
+    const hasPendingToast = typeof window !== 'undefined' && window.sessionStorage.getItem(GOOGLE_LINK_TOAST_PENDING_KEY) === '1';
+    const isGoogleLinkedNow = identityProviders.includes('google');
+
+    if (hasShownGoogleLinkedToastRef.current) {
+      return;
+    }
+
+    const shouldShowToast = googleStatus === 'connected' || (hasPendingToast && isGoogleLinkedNow);
+
+    if (!shouldShowToast) {
+      return;
+    }
+
+    hasShownGoogleLinkedToastRef.current = true;
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(GOOGLE_LINK_TOAST_PENDING_KEY);
+    }
+    void loadIdentityProviders();
+
+    toast({
+      title: 'Google conectado',
+      description: 'Ya puedes iniciar sesión también con Google.',
+    });
+
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete('google');
+    const nextQuery = nextParams.toString();
+    const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname;
+
+    if (googleStatus === 'connected') {
+      router.replace(nextUrl);
+    }
+  }, [identityProviders, loadIdentityProviders, pathname, router, searchParams, toast]);
+
+  const hasGoogleLinked = identityProviders.includes('google');
+  const hasAlternativeProvider = identityProviders.some((provider) => provider !== 'google');
   const currentDeviceSession = useMemo(
     () => deviceSessions.find((deviceSession) => deviceSession.sessionId === currentSessionId) ?? null,
     [currentSessionId, deviceSessions]
@@ -333,6 +433,50 @@ export default function ProfilePage() {
     }
   };
 
+  const handleConnectGoogle = async () => {
+    setIsSubmittingGoogleIdentity(true);
+
+    try {
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.setItem(GOOGLE_LINK_TOAST_PENDING_KEY, '1');
+      }
+
+      await connectGoogleIdentity('/profile');
+    } catch (error) {
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.removeItem(GOOGLE_LINK_TOAST_PENDING_KEY);
+      }
+
+      toast({
+        title: 'No se pudo conectar Google',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+      setIsSubmittingGoogleIdentity(false);
+    }
+  };
+
+  const handleDisconnectGoogle = async () => {
+    setIsSubmittingGoogleIdentity(true);
+
+    try {
+      await disconnectGoogleIdentity();
+      await loadIdentityProviders();
+      toast({
+        title: 'Google desconectado',
+        description: 'Ya no podrás iniciar sesión con Google en esta cuenta.',
+      });
+    } catch (error) {
+      toast({
+        title: 'No se pudo desconectar Google',
+        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSubmittingGoogleIdentity(false);
+    }
+  };
+
   if (!isReady) {
     return <AppLoadingScreen title="Cargando perfil" subtitle="Recuperando tu cuenta y dispositivos..." />;
   }
@@ -446,6 +590,54 @@ export default function ProfilePage() {
                     Oscuro
                   </Button>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card className="lg:col-start-2">
+              <CardHeader>
+                <CardTitle>Cuenta de Google</CardTitle>
+                <CardDescription>
+                  Gestiona si quieres usar tu cuenta de Google para iniciar sesión.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="flex items-center justify-between rounded-lg border px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <GoogleLogo className="w-5 h-5" />
+                    <div>
+                      <p className="text-sm font-medium">Google</p>
+                      <p className="text-xs text-muted-foreground">
+                        {hasGoogleLinked ? 'Cuenta conectada' : 'Cuenta no conectada'}
+                      </p>
+                    </div>
+                  </div>
+                  <Badge variant={hasGoogleLinked ? 'secondary' : 'outline'}>{hasGoogleLinked ? 'Conectado' : 'No conectado'}</Badge>
+                </div>
+
+                {hasGoogleLinked ? (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={handleDisconnectGoogle}
+                    disabled={isSubmittingGoogleIdentity || !hasAlternativeProvider}
+                    className="w-full sm:w-auto"
+                  >
+                    {isSubmittingGoogleIdentity ? <LoaderCircle className="w-4 h-4 mr-2 animate-spin" /> : <GoogleLogo className="w-4 h-4 mr-2" />}
+                    Desconectar cuenta de Google
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleConnectGoogle}
+                    disabled={isSubmittingGoogleIdentity}
+                    className="w-full sm:w-auto"
+                  >
+                    {isSubmittingGoogleIdentity ? <LoaderCircle className="w-4 h-4 mr-2 animate-spin" /> : <GoogleLogo className="w-4 h-4 mr-2" />}
+                    Vincular cuenta de Google
+                  </Button>
+                )}
+
               </CardContent>
             </Card>
 

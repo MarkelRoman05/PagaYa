@@ -2,7 +2,9 @@
 
 import { ReactNode, createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
+import { App, type URLOpenListenerEvent } from '@capacitor/app';
+import { Browser } from '@capacitor/browser';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { AppNotification, AppState, AuthCredentials, Debt, DebtStatus, DebtType, DeviceSession, Friend, FriendInvitation, InvitationStatus, NotificationChannel, NotificationChannelSettings, NotificationPreference, NotificationPreferences, NotificationType, RegisterCredentials, Theme } from '@/lib/types';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase';
@@ -113,6 +115,9 @@ interface PagaYaContextValue extends AppState {
   theme: Theme;
   setTheme: (theme: Theme) => Promise<void>;
   signIn: (credentials: AuthCredentials) => Promise<void>;
+  signInWithGoogle: (nextPath?: string, authIntent?: 'login' | 'register') => Promise<void>;
+  connectGoogleIdentity: (nextPath?: string) => Promise<void>;
+  disconnectGoogleIdentity: () => Promise<void>;
   signUp: (credentials: RegisterCredentials) => Promise<void>;
   requestPasswordReset: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -436,6 +441,24 @@ function getFriendlyErrorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function buildAuthRedirectUrl(nextPath: string, authProvider: string, authIntent?: string) {
+  const normalizedNextPath = nextPath.startsWith('/') ? nextPath : `/${nextPath}`;
+  const params = new URLSearchParams();
+
+  params.set('next', normalizedNextPath);
+  params.set('authProvider', authProvider);
+
+  if (authIntent) {
+    params.set('authIntent', authIntent);
+  }
+
+  if (Capacitor.isNativePlatform()) {
+    return `com.markel.pagaya://auth/callback?${params.toString()}`;
+  }
+
+  return `${window.location.origin}/auth?${params.toString()}`;
 }
 
 async function ensureAuthenticatedUser() {
@@ -869,6 +892,72 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
   }, [configured, refreshData, syncCurrentDeviceSession]);
 
   useEffect(() => {
+    if (!configured || !Capacitor.isNativePlatform()) {
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+
+    if (!supabase) {
+      return;
+    }
+
+    const listenerPromise: Promise<PluginListenerHandle> = App.addListener('appUrlOpen', async ({ url }: URLOpenListenerEvent) => {
+      if (!url || !url.startsWith('com.markel.pagaya://')) {
+        return;
+      }
+
+      const parsedUrl = new URL(url);
+
+      if (parsedUrl.host !== 'auth') {
+        return;
+      }
+
+      const queryParams = parsedUrl.searchParams;
+      const hashParams = new URLSearchParams(parsedUrl.hash.replace(/^#/, ''));
+      const code = queryParams.get('code');
+      const accessToken = hashParams.get('access_token') ?? queryParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token') ?? queryParams.get('refresh_token');
+      const nextPath = queryParams.get('next') || '/auth';
+
+      try {
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+          if (error) {
+            throw error;
+          }
+        } else if (accessToken && refreshToken) {
+          const { error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+
+          if (error) {
+            throw error;
+          }
+        }
+
+        if (typeof window !== 'undefined') {
+          window.location.href = nextPath;
+        }
+      } catch (error) {
+        console.error('No se pudo completar el callback OAuth nativo', error);
+      } finally {
+        try {
+          await Browser.close();
+        } catch {
+          // Ignore close errors when browser is already closed.
+        }
+      }
+    });
+
+    return () => {
+      void listenerPromise.then((listener: PluginListenerHandle) => listener.remove());
+    };
+  }, [configured]);
+
+  useEffect(() => {
     if (!configured || !user) {
       return;
     }
@@ -1090,11 +1179,136 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       throw new Error('Faltan las variables NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.');
     }
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
 
     if (error) {
+      const normalizedErrorMessage = error.message.toLowerCase();
+      const hasInvalidCredentials = normalizedErrorMessage.includes('invalid login credentials');
+
+      if (hasInvalidCredentials && normalizedEmail) {
+        const { data: isEmailRegistered, error: emailCheckError } = await supabase.rpc('is_email_registered', {
+          email_input: normalizedEmail,
+        });
+
+        if (!emailCheckError && isEmailRegistered) {
+          throw new Error('Esta cuenta no tiene contraseña activa para entrar por email. Si te registraste con Google, usa "¿Olvidaste tu contraseña?" para crear una y poder iniciar sesión con email/contraseña.');
+        }
+      }
+
       throw new Error(getFriendlyErrorMessage(error, 'No se pudo iniciar sesión.'));
     }
+  };
+
+  const signInWithGoogle = async (nextPath = '/debts', authIntent: 'login' | 'register' = 'login') => {
+    const supabase = getSupabaseBrowserClient();
+
+    if (!supabase) {
+      throw new Error('Faltan las variables NEXT_PUBLIC_SUPABASE_URL y NEXT_PUBLIC_SUPABASE_ANON_KEY.');
+    }
+
+    const redirectTo = typeof window !== 'undefined'
+      ? buildAuthRedirectUrl(nextPath, 'google', authIntent)
+      : undefined;
+
+    const isNative = Capacitor.isNativePlatform();
+
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo,
+        skipBrowserRedirect: isNative,
+        queryParams: {
+          prompt: 'select_account',
+        },
+      },
+    });
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo iniciar sesión con Google.'));
+    }
+
+    if (isNative && data?.url) {
+      await Browser.open({
+        url: data.url,
+        presentationStyle: 'popover',
+      });
+    }
+  };
+
+  const connectGoogleIdentity = async (nextPath = '/profile') => {
+    const { supabase } = await ensureAuthenticatedUser();
+
+    const redirectTo = typeof window !== 'undefined'
+      ? buildAuthRedirectUrl(nextPath, 'google-link')
+      : undefined;
+
+    const isNative = Capacitor.isNativePlatform();
+
+    const { data, error } = await supabase.auth.linkIdentity({
+      provider: 'google',
+      options: {
+        redirectTo,
+        skipBrowserRedirect: isNative,
+        queryParams: {
+          prompt: 'select_account',
+        },
+      },
+    });
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo conectar tu cuenta de Google.'));
+    }
+
+    if (isNative && data?.url) {
+      await Browser.open({
+        url: data.url,
+        presentationStyle: 'popover',
+      });
+    }
+  };
+
+  const disconnectGoogleIdentity = async () => {
+    const { supabase } = await ensureAuthenticatedUser();
+
+    const { data, error } = await supabase.auth.getUserIdentities();
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo comprobar las cuentas conectadas.'));
+    }
+
+    const identities = data.identities ?? [];
+    const googleIdentity = identities.find((identity) => identity.provider.toLowerCase() === 'google');
+
+    if (!googleIdentity) {
+      return;
+    }
+
+    const hasAlternativeProvider = identities.some(
+      (identity) => identity.id !== googleIdentity.id && identity.provider.toLowerCase() !== 'google'
+    );
+
+    if (!hasAlternativeProvider) {
+      throw new Error('No puedes desconectar Google porque es tu único método de acceso. Añade antes otro método de inicio de sesión.');
+    }
+
+    const { error: unlinkError } = await supabase.auth.unlinkIdentity(googleIdentity);
+
+    if (unlinkError) {
+      throw new Error(getFriendlyErrorMessage(unlinkError, 'No se pudo desconectar la cuenta de Google.'));
+    }
+
+    const {
+      data: { user: refreshedUser },
+      error: refreshedUserError,
+    } = await supabase.auth.getUser();
+
+    if (refreshedUserError) {
+      throw new Error(getFriendlyErrorMessage(refreshedUserError, 'Google se desconectó, pero no se pudo refrescar el estado de la sesión.'));
+    }
+
+    setUser(refreshedUser ?? null);
   };
 
   const signUp = async ({ email, password, username }: RegisterCredentials) => {
@@ -1935,6 +2149,9 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         notificationChannelsEnabled,
         setTheme,
         signIn,
+        signInWithGoogle,
+        connectGoogleIdentity,
+        disconnectGoogleIdentity,
         signUp,
         requestPasswordReset,
         signOut,

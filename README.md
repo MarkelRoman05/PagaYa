@@ -34,7 +34,7 @@ PagaYa resuelve un problema cotidiano: organizar pagos entre amigos sin fricció
 
 La app está pensada para un uso real en producción:
 
-- Autenticación por email con Supabase.
+- Autenticación por email y Google con Supabase.
 - Persistencia cloud con políticas RLS.
 - Flujo de invitaciones entre usuarios reales.
 - Confirmación de pagos entre las dos partes.
@@ -44,6 +44,7 @@ La app está pensada para un uso real en producción:
 ## Funcionalidades principales
 
 - Registro e inicio de sesión por email.
+- Registro e inicio de sesión con Google (OAuth).
 - Perfil de usuario con username y avatar.
 - Invitaciones de amistad por username.
 - Aceptación/rechazo de invitaciones entrantes.
@@ -138,6 +139,36 @@ Usa como base el archivo `.env.example`.
 NEXT_PUBLIC_SUPABASE_URL=https://tu-proyecto.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=tu-clave-publica-anon
 ```
+
+## Activar Google OAuth (Supabase)
+
+Para que funcione el nuevo botón "Continuar con Google":
+
+1. Crea credenciales OAuth en Google Cloud Console.
+2. En OAuth Client (Web), añade este "Authorized redirect URI":
+
+```text
+https://<TU_PROJECT_REF>.supabase.co/auth/v1/callback
+```
+
+3. En Supabase: Authentication -> Providers -> Google.
+4. Activa "Enable Sign in with Google".
+5. Pega `Client ID` y `Client Secret` de Google.
+6. En Supabase: Authentication -> URL Configuration.
+7. Define `Site URL`:
+
+```text
+http://localhost:9002
+```
+
+8. Añade tus dominios en `Additional Redirect URLs` (local, preview, producción), por ejemplo:
+
+```text
+http://localhost:9002/auth
+https://pagaya.vercel.app/auth
+```
+
+Con esto, el flujo redirige a Google y vuelve a `/auth`, y la app continúa al destino (`next`) tras autenticarse.
 
 ## Scripts disponibles
 
