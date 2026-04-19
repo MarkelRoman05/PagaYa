@@ -129,6 +129,7 @@ async function markTokensActive(supabase: any, tokens: string[]) {
 
 const NO_TOKEN_RETRY_DELAYS_MS = [1500, 3500];
 const INACTIVE_FALLBACK_MAX_AGE_MS = 2 * 60 * 1000;
+const INVALID_TOKEN_RETRY_DELAY_MS = 1200;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -149,6 +150,73 @@ async function getActiveAndroidTokens(supabase: any, userId: string): Promise<st
   return (tokenRows ?? [])
     .map((tokenRow: any) => tokenRow.token)
     .filter((token: string | null | undefined) => typeof token === "string" && token.length > 0);
+}
+
+function uniqueNonEmptyTokens(tokens: string[]): string[] {
+  return Array.from(new Set(tokens.filter((token) => typeof token === "string" && token.length > 0)));
+}
+
+async function retryWithFreshActiveTokens(
+  supabase: any,
+  row: any,
+  serviceAccount: any,
+  previousTokens: string[]
+): Promise<{ sent: boolean; successCount?: number; failureCount?: number }> {
+  await sleep(INVALID_TOKEN_RETRY_DELAY_MS);
+
+  const activeTokens = await getActiveAndroidTokens(supabase, row.user_id);
+  const freshTokens = uniqueNonEmptyTokens(activeTokens.filter((token) => !previousTokens.includes(token)));
+
+  if (freshTokens.length === 0) {
+    return { sent: false };
+  }
+
+  const accessToken = await getFCMAccessToken(serviceAccount);
+  const retryPayload = {
+    notification: {
+      title: row.title,
+      body: row.message,
+    },
+    data: {
+      notification_id: row.id,
+      type: row.type,
+    },
+    android: {
+      priority: "high",
+      notification: {
+        channelId: "default",
+        sound: "default",
+      },
+    },
+    tokens: freshTokens,
+  };
+
+  const retryResult = await sendFCMMessage(accessToken, serviceAccount.project_id, retryPayload);
+
+  const invalidRetryTokens: string[] = [];
+  retryResult.responses.forEach((response: any, index: number) => {
+    if (!isSuccessfulFcmResponse(response)) {
+      const code = response?.error?.code ?? "";
+      if (isInvalidFcmTokenError(code)) {
+        invalidRetryTokens.push(freshTokens[index]);
+      }
+    }
+  });
+
+  if (invalidRetryTokens.length > 0) {
+    await markTokensInactive(supabase, invalidRetryTokens);
+  }
+
+  if (retryResult.successCount > 0) {
+    await markAsDelivered(supabase, row.id, row.push_attempts ?? 0);
+    return {
+      sent: true,
+      successCount: retryResult.successCount,
+      failureCount: retryResult.failureCount,
+    };
+  }
+
+  return { sent: false };
 }
 
 async function getRecentAndroidTokensAnyStatus(supabase: any, userId: string): Promise<string[]> {
@@ -445,6 +513,15 @@ async function dispatchNotification(supabase: any, row: any, serviceAccount: any
   }
 
   if (invalidTokenFailures > 0 && realFailures === 0) {
+    const retryAfterInvalid = await retryWithFreshActiveTokens(supabase, row, serviceAccount, tokens);
+    if (retryAfterInvalid.sent) {
+      return {
+        sent: true,
+        successCount: retryAfterInvalid.successCount ?? 0,
+        failureCount: retryAfterInvalid.failureCount ?? 0,
+      };
+    }
+
     const codeSummary = summarizeFailureCodes(result.responses);
     const reason = `NO_VALID_ANDROID_TOKENS:${codeSummary || "none"}`;
     await markAsFailed(supabase, row.id, reason.slice(0, 280), row.push_attempts ?? 0);

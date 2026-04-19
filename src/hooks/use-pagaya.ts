@@ -614,6 +614,23 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
 
     if (error) {
       console.error('No se pudo registrar el token push de Android', error);
+      return;
+    }
+
+    // Keep only the current token active for this user/platform to avoid stale-token fan-out.
+    const { error: deactivateOthersError } = await supabase
+      .from('user_push_tokens')
+      .update({
+        is_active: false,
+        last_seen_at: new Date().toISOString(),
+      })
+      .eq('user_id', activeSession.user.id)
+      .eq('platform', 'android')
+      .neq('token', token)
+      .eq('is_active', true);
+
+    if (deactivateOthersError) {
+      console.error('No se pudieron desactivar tokens Android antiguos', deactivateOthersError);
     }
   }, []);
 
@@ -1026,13 +1043,6 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         }
 
         await cleanupListeners();
-
-        // Force token rotation so stale/invalid FCM tokens are replaced.
-        try {
-          await PushNotifications.unregister();
-        } catch (error) {
-          console.warn('No se pudo forzar rotacion del token push en Android', error);
-        }
 
         await PushNotifications.addListener('registration', async (token) => {
           if (cancelled) {
