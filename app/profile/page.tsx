@@ -1,6 +1,6 @@
 "use client"
 
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { Navbar } from '@/components/layout/Navbar';
@@ -90,7 +90,19 @@ function GoogleLogo({ className = 'w-5 h-5' }: { className?: string }) {
   );
 }
 
+function ProfilePageFallback() {
+  return <AppLoadingScreen title="Cargando perfil" subtitle="Preparando tu panel y configuración..." />;
+}
+
 export default function ProfilePage() {
+  return (
+    <Suspense fallback={<ProfilePageFallback />}>
+      <ProfilePageContent />
+    </Suspense>
+  );
+}
+
+function ProfilePageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
