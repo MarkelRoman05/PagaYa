@@ -112,6 +112,16 @@ export function Navbar() {
 
   const currentPath = normalizePath(pathname);
 
+  const isNavItemActive = (href: string) => {
+    const normalizedHref = normalizePath(href);
+
+    if (normalizedHref === '/') {
+      return currentPath === '/';
+    }
+
+    return currentPath === normalizedHref || currentPath.startsWith(`${normalizedHref}/`);
+  };
+
   const userMetadata = (user?.user_metadata ?? {}) as Record<string, unknown>;
   const username =
     typeof userMetadata.username === "string"
@@ -213,7 +223,7 @@ export function Navbar() {
           <div className="hidden md:flex items-center gap-2">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = currentPath === normalizePath(item.href);
+              const isActive = isNavItemActive(item.href);
 
               return (
                 <Link
@@ -322,7 +332,7 @@ export function Navbar() {
         <div className="container mx-auto flex h-16 max-w-6xl items-stretch justify-between gap-1 px-2 sm:px-4">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = currentPath === normalizePath(item.href);
+            const isActive = isNavItemActive(item.href);
 
             return (
               <Link

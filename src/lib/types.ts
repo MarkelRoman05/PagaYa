@@ -77,6 +77,7 @@ export interface Debt {
 export interface Group {
   id: string;
   createdById: string;
+  icon?: string;
   name: string;
   description?: string;
   createdAt: string;

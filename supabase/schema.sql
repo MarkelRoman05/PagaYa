@@ -862,11 +862,15 @@ revoke all on function public.create_user_notification(uuid, text, text, text, j
 create table if not exists public.groups (
   id uuid primary key default gen_random_uuid(),
   created_by_id uuid not null references auth.users(id) on delete cascade,
+  icon text default '👥',
   name text not null,
   description text,
   created_at timestamptz not null default timezone('utc', now()),
   updated_at timestamptz not null default timezone('utc', now())
 );
+
+alter table public.groups
+  add column if not exists icon text default '👥';
 
 create index if not exists groups_created_by_idx
   on public.groups (created_by_id, created_at desc);
@@ -968,6 +972,7 @@ create or replace function public.create_group(
 returns table (
   id uuid,
   created_by_id uuid,
+  icon text,
   name text,
   description text,
   created_at timestamptz,
@@ -995,6 +1000,7 @@ returns table (
     returning
       groups.id,
       groups.created_by_id,
+      groups.icon,
       groups.name,
       groups.description,
       groups.created_at,
@@ -1027,6 +1033,7 @@ returns table (
   select
     cg.id,
     cg.created_by_id,
+    cg.icon,
     cg.name,
     cg.description,
     cg.created_at,
@@ -2128,6 +2135,12 @@ create policy "group_expenses_update_creator_or_admin"
   for update
   using (auth.uid() = created_by_id or public.is_group_admin(group_expenses.group_id))
   with check (auth.uid() = created_by_id or public.is_group_admin(group_expenses.group_id));
+
+drop policy if exists "group_expenses_delete_creator_or_admin" on public.group_expenses;
+create policy "group_expenses_delete_creator_or_admin"
+  on public.group_expenses
+  for delete
+  using (auth.uid() = created_by_id or public.is_group_admin(group_expenses.group_id));
 
 drop policy if exists "group_expense_splits_select_member" on public.group_expense_splits;
 create policy "group_expense_splits_select_member"

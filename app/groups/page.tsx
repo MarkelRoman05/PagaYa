@@ -8,15 +8,24 @@ import { usePagaYa } from "@/hooks/use-pagaya";
 import { AppLoadingScreen, InlineLoadingNotice } from "@/components/ui/app-loading-screen";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { formatCurrency } from "@/lib/utils";
 import { LoaderCircle, Plus, RefreshCw, Check, X, Users } from "lucide-react";
+
+function isGroupImageIcon(value?: string) {
+  if (!value) {
+    return false;
+  }
+
+  return value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:image/");
+}
 
 export default function GroupsPage() {
   const {
     user,
     groups,
     groupMembers,
+    groupExpenses,
     groupInvitations,
     isReady,
     isLoadingData,
@@ -30,6 +39,18 @@ export default function GroupsPage() {
   const groupMemberCount = useMemo(() => {
     return new Map(groups.map((group) => [group.id, groupMembers.filter((member) => member.groupId === group.id).length]));
   }, [groupMembers, groups]);
+
+  const groupTotalAmount = useMemo(() => {
+    return new Map(
+      groups.map((group) => {
+        const total = groupExpenses
+          .filter((expense) => expense.groupId === group.id)
+          .reduce((sum, expense) => sum + expense.amount, 0);
+
+        return [group.id, total];
+      }),
+    );
+  }, [groupExpenses, groups]);
 
   const pendingInvitations = groupInvitations.filter(
     (invitation) =>
@@ -162,29 +183,42 @@ export default function GroupsPage() {
           <section>
             <div className="mb-4 flex items-center justify-between gap-2">
               <h2 className="text-xl font-bold">Tus grupos</h2>
-              <Badge variant="secondary" className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide">
-                {groups.length} total
-              </Badge>
+              <div className="inline-flex items-center rounded-full border border-primary/30 bg-primary/12 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-primary shadow-sm shadow-primary/15">
+                <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-primary" />
+                {groups.length} grupo(s)
+              </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {groups.length > 0 ? (
                 groups.map((group) => (
                   <Link key={group.id} href={`/groups/${group.id}`} className="group">
-                    <Card className="h-full border-border/70 transition-all hover:border-primary/40 hover:shadow-lg">
-                      <CardContent className="space-y-3 p-5">
+                    <Card className="relative h-full overflow-hidden border-border/70 bg-gradient-to-br from-card to-card/70 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/45 hover:shadow-lg hover:shadow-primary/10">
+                      <div className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full bg-primary/10 blur-2xl" />
+                      <CardContent className="relative space-y-4 p-5">
                         <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <h3 className="text-lg font-bold leading-tight group-hover:text-primary">{group.name}</h3>
-                            <p className="mt-1 text-sm text-muted-foreground">{group.description || "Grupo sin descripción"}</p>
+                          <div className="flex min-w-0 items-start gap-3">
+                            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-primary/30 bg-background/85 shadow-sm shadow-primary/10">
+                              {isGroupImageIcon(group.icon) ? (
+                                <img src={group.icon} alt={`Icono de ${group.name}`} className="h-full w-full object-cover" />
+                              ) : (
+                                <span className="text-3xl leading-none">{group.icon || "👥"}</span>
+                              )}
+                            </div>
+
+                            <div className="min-w-0">
+                              <h3 className="truncate text-lg font-bold leading-tight transition-colors group-hover:text-primary">{group.name}</h3>
+                              <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{group.description || "Grupo sin descripción"}</p>
+                            </div>
                           </div>
-                          <Badge variant="outline" className="rounded-full border-primary/20 bg-primary/10 text-primary">
-                            {groupMemberCount.get(group.id) ?? 0} miembros
-                          </Badge>
+                          <div className="rounded-full border border-primary/30 bg-primary/12 px-3 py-1 text-xs font-semibold text-primary">
+                            {formatCurrency(groupTotalAmount.get(group.id) ?? 0)}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Users className="h-4 w-4" />
-                          <span>Gastos compartidos y roles automáticos</span>
+
+                        <div className="flex items-center gap-2 rounded-xl border border-border/50 bg-background/45 px-3 py-2 text-sm text-muted-foreground">
+                          <Users className="h-4 w-4 text-primary" />
+                          <span>{groupMemberCount.get(group.id) ?? 0} miembros</span>
                         </div>
                       </CardContent>
                     </Card>

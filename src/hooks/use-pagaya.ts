@@ -134,6 +134,7 @@ interface NotificationRow {
 interface GroupRow {
   id: string;
   created_by_id: string;
+  icon: string | null;
   name: string;
   description: string | null;
   created_at: string;
@@ -387,6 +388,7 @@ function mapGroupRow(row: GroupRow): Group {
   return {
     id: row.id,
     createdById: row.created_by_id,
+    icon: row.icon ?? undefined,
     name: row.name,
     description: row.description ?? undefined,
     createdAt: row.created_at,
@@ -2178,13 +2180,22 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       }
 
       const [year, month, day] = normalizedDate.split('-').map((value) => Number.parseInt(value, 10));
-      const localNoonDate = new Date(year, month - 1, day, 12, 0, 0, 0);
+      const now = new Date();
+      const localDateWithCurrentTime = new Date(
+        year,
+        month - 1,
+        day,
+        now.getHours(),
+        now.getMinutes(),
+        now.getSeconds(),
+        now.getMilliseconds(),
+      );
 
-      if (Number.isNaN(localNoonDate.getTime())) {
+      if (Number.isNaN(localDateWithCurrentTime.getTime())) {
         throw new Error('La fecha del gasto no es válida.');
       }
 
-      expenseDateIso = localNoonDate.toISOString();
+      expenseDateIso = localDateWithCurrentTime.toISOString();
     }
 
     const rpcPayload = {
@@ -2210,8 +2221,10 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       rpcResponse.error &&
       (
         rpcResponse.error.code === '42883' ||
+        rpcResponse.error.code === 'PGRST202' ||
         (rpcResponse.error.message.toLowerCase().includes('function public.create_group_expense') &&
-          rpcResponse.error.message.toLowerCase().includes('does not exist'))
+          (rpcResponse.error.message.toLowerCase().includes('does not exist') ||
+            rpcResponse.error.message.toLowerCase().includes('schema cache')))
       )
     ) {
       rpcResponse = await supabase.rpc('create_group_expense', rpcPayload);
@@ -2370,13 +2383,18 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       throw new Error('No tienes permisos para eliminar este gasto.');
     }
 
-    const { error } = await supabase
+    const { error, count } = await supabase
       .from('group_expenses')
-      .delete()
+      .delete({ count: 'exact' })
+      .select('id')
       .eq('id', expenseId);
 
     if (error) {
       throw new Error(getFriendlyErrorMessage(error, 'No se pudo eliminar el gasto del grupo.'));
+    }
+
+    if ((count ?? 0) === 0) {
+      throw new Error('No se pudo eliminar el gasto del grupo. Revisa permisos o políticas de seguridad (RLS).');
     }
 
     setState((currentState) => ({

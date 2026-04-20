@@ -11,16 +11,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { formatCurrency } from "@/lib/utils";
 import { getSupabaseBrowserClient } from "@/lib/supabase";
-import { CalendarDays, ChevronLeft, CircleDollarSign, Copy, LoaderCircle, MessageCircleMore, PencilLine, Plus, QrCode, ReceiptText, Share2, Shield, Trash2, Users, X } from "lucide-react";
+import { CalendarDays, ChevronLeft, CircleDollarSign, Copy, ImagePlus, LoaderCircle, MessageCircleMore, PencilLine, Plus, QrCode, ReceiptText, Share2, Shield, Trash2, Users, X } from "lucide-react";
 
 type FinancialStatus = "al día" | "moroso" | "moroso premium" | "pendiente";
 
@@ -80,6 +82,14 @@ function normalizeAmountInput(value: string) {
   return normalizedValue;
 }
 
+function isGroupImageIcon(value?: string) {
+  if (!value) {
+    return false;
+  }
+
+  return value.startsWith("http://") || value.startsWith("https://") || value.startsWith("data:image/");
+}
+
 export default function GroupDetailPage() {
   const params = useParams<{ groupId: string }>();
   const { toast } = useToast();
@@ -108,6 +118,11 @@ export default function GroupDetailPage() {
   const [isExpenseDetailOpen, setIsExpenseDetailOpen] = useState(false);
   const [isAddExpenseModalOpen, setIsAddExpenseModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isEditGroupModalOpen, setIsEditGroupModalOpen] = useState(false);
+  const [isUpdatingGroupInfo, setIsUpdatingGroupInfo] = useState(false);
+  const [isUploadingGroupIcon, setIsUploadingGroupIcon] = useState(false);
+  const [groupEditForm, setGroupEditForm] = useState({ icon: "👥", name: "", description: "" });
+  const groupIconFileInputRef = useRef<HTMLInputElement | null>(null);
   const [isGeneratingShareLink, setIsGeneratingShareLink] = useState(false);
   const [shareInviteUrl, setShareInviteUrl] = useState<string | null>(null);
   const [expenseSplitMode, setExpenseSplitMode] = useState<"equal" | "custom">("equal");
@@ -115,6 +130,7 @@ export default function GroupDetailPage() {
   const [customSplitByMember, setCustomSplitByMember] = useState<Record<string, string>>({});
   const [isUpdatingExpense, setIsUpdatingExpense] = useState(false);
   const [isDeletingExpense, setIsDeletingExpense] = useState(false);
+  const [isDeleteExpenseConfirmOpen, setIsDeleteExpenseConfirmOpen] = useState(false);
   const [isExpenseEditMode, setIsExpenseEditMode] = useState(false);
   const [editExpenseForm, setEditExpenseForm] = useState({ description: "", amount: "", paidByMemberId: "" });
   const [editExpenseSplitMode, setEditExpenseSplitMode] = useState<"equal" | "custom">("equal");
@@ -184,7 +200,26 @@ export default function GroupDetailPage() {
 
   // Gastos ordenados por fecha (más recientes primero)
   const sortedExpenses = useMemo(() => {
-    return [...expenses].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const toEpoch = (value: string) => {
+      const epoch = new Date(value).getTime();
+      return Number.isFinite(epoch) ? epoch : 0;
+    };
+
+    return [...expenses].sort((a, b) => {
+      const createdAtDiff = toEpoch(b.createdAt) - toEpoch(a.createdAt);
+
+      if (createdAtDiff !== 0) {
+        return createdAtDiff;
+      }
+
+      const updatedAtDiff = toEpoch(b.updatedAt) - toEpoch(a.updatedAt);
+
+      if (updatedAtDiff !== 0) {
+        return updatedAtDiff;
+      }
+
+      return 0;
+    });
   }, [expenses]);
 
   // Gastos agrupados por fecha
@@ -602,6 +637,230 @@ export default function GroupDetailPage() {
     await handleCopyShareLink();
   };
 
+  const openEditGroupModal = () => {
+    if (!group) {
+      return;
+    }
+
+    setGroupEditForm({
+      icon: group.icon || "👥",
+      name: group.name,
+      description: group.description || "",
+    });
+    setIsEditGroupModalOpen(true);
+  };
+
+  const handleUploadGroupIcon = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0];
+
+    if (!selectedFile) {
+      return;
+    }
+
+    if (!groupId || !user?.id) {
+      toast({
+        title: "No se pudo subir la imagen",
+        description: "Necesitas estar identificado y dentro de un grupo.",
+        variant: "destructive",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    if (!selectedFile.type.startsWith("image/")) {
+      toast({
+        title: "Archivo no válido",
+        description: "Selecciona una imagen (PNG, JPG, WEBP...).",
+        variant: "destructive",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    const maxFileSizeBytes = 3 * 1024 * 1024;
+    if (selectedFile.size > maxFileSizeBytes) {
+      toast({
+        title: "Imagen demasiado grande",
+        description: "La imagen debe pesar menos de 3 MB.",
+        variant: "destructive",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+
+    if (!supabase) {
+      toast({
+        title: "No se pudo subir la imagen",
+        description: "No se pudo inicializar la conexión con la base de datos.",
+        variant: "destructive",
+      });
+      event.target.value = "";
+      return;
+    }
+
+    setIsUploadingGroupIcon(true);
+
+    try {
+      const fileExtension = selectedFile.name.split(".").pop()?.toLowerCase() || "png";
+      const filePath = `${user.id}/group-icons/${groupId}-${Date.now()}.${fileExtension}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(filePath, selectedFile, { upsert: true, cacheControl: "3600" });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data } = supabase.storage.from("avatars").getPublicUrl(filePath);
+
+      if (!data?.publicUrl) {
+        throw new Error("No se pudo obtener la URL pública de la imagen.");
+      }
+
+      setGroupEditForm((current) => ({
+        ...current,
+        icon: data.publicUrl,
+      }));
+
+      toast({
+        title: "Imagen cargada",
+        description: "Ahora guarda cambios para aplicar este icono al grupo.",
+      });
+    } catch (error) {
+      toast({
+        title: "No se pudo subir la imagen",
+        description: error instanceof Error ? error.message : "Inténtalo de nuevo.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUploadingGroupIcon(false);
+      event.target.value = "";
+    }
+  };
+
+  const handleUpdateGroupInfo = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!groupId || !group) {
+      return;
+    }
+
+    const normalizedName = groupEditForm.name.trim();
+    const normalizedDescription = groupEditForm.description.trim();
+    const normalizedIcon = groupEditForm.icon || "👥";
+    const previousIcon = group.icon || "👥";
+    const iconChanged = normalizedIcon !== previousIcon;
+
+    if (!normalizedName) {
+      toast({
+        title: "Nombre obligatorio",
+        description: "Introduce un nombre para el grupo.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient();
+
+    if (!supabase) {
+      toast({
+        title: "No se pudo guardar",
+        description: "No se pudo inicializar la conexión con la base de datos.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsUpdatingGroupInfo(true);
+
+    try {
+      let degradedWithoutIcon = false;
+
+      const updatePayload = {
+        icon: normalizedIcon,
+        name: normalizedName,
+        description: normalizedDescription || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      let { error } = await supabase
+        .from("groups")
+        .update(updatePayload)
+        .eq("id", groupId)
+        .select("id")
+        .single();
+
+      // Compatibility fallback for environments without groups.icon migration.
+      if (
+        error &&
+        error.message.toLowerCase().includes("icon") &&
+        (error.message.toLowerCase().includes("column") || error.message.toLowerCase().includes("schema cache"))
+      ) {
+        const fallback = await supabase
+          .from("groups")
+          .update({
+            name: normalizedName,
+            description: normalizedDescription || null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", groupId)
+          .select("id")
+          .single();
+
+        error = fallback.error;
+
+        if (!error) {
+          degradedWithoutIcon = true;
+        }
+      }
+
+      if (error) {
+        throw error;
+      }
+
+      if (iconChanged) {
+        if (degradedWithoutIcon) {
+          throw new Error(
+            "No se pudo guardar el icono. Vuelve a intentarlo."
+          );
+        }
+
+        const { data: persistedGroup, error: verifyError } = await supabase
+          .from("groups")
+          .select("icon")
+          .eq("id", groupId)
+          .single();
+
+        if (verifyError) {
+          throw verifyError;
+        }
+
+        if ((persistedGroup?.icon ?? "👥") !== normalizedIcon) {
+          throw new Error("El icono no se guardó correctamente en la base de datos.");
+        }
+      }
+
+      await refreshData({ silent: true });
+      setIsEditGroupModalOpen(false);
+
+      toast({
+        title: "Grupo actualizado",
+        description: "Los cambios se guardaron correctamente.",
+      });
+    } catch (error) {
+      toast({
+        title: "No se pudo actualizar",
+        description: error instanceof Error ? error.message : "Inténtalo de nuevo.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUpdatingGroupInfo(false);
+    }
+  };
+
   const handleAddExpense = async (event: React.FormEvent) => {
     event.preventDefault();
 
@@ -886,8 +1145,11 @@ export default function GroupDetailPage() {
       return;
     }
 
-    const confirmed = window.confirm("¿Seguro que quieres eliminar este gasto? Esta acción no se puede deshacer.");
-    if (!confirmed) {
+    setIsDeleteExpenseConfirmOpen(true);
+  };
+
+  const handleConfirmDeleteExpense = async () => {
+    if (!selectedExpense) {
       return;
     }
 
@@ -900,6 +1162,7 @@ export default function GroupDetailPage() {
         description: "El gasto y sus repartos se han borrado del grupo.",
       });
       setIsExpenseEditMode(false);
+      setIsDeleteExpenseConfirmOpen(false);
       setIsExpenseDetailOpen(false);
       setSelectedExpenseId(null);
       setIsDetailIconPickerOpen(false);
@@ -953,9 +1216,13 @@ export default function GroupDetailPage() {
               <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-primary/15 blur-2xl" />
               <CardHeader className="relative p-4 sm:p-6">
                 <div className="flex flex-col gap-4 sm:gap-5">
-                  <div className="flex items-start gap-3 sm:gap-4">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-primary/30 bg-gradient-to-br from-primary/25 to-primary/10 text-3xl shadow-sm sm:h-16 sm:w-16 sm:text-4xl">
-                      👥
+                  <div className="flex items-start gap-4 sm:gap-5 md:justify-between">
+                    <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-3xl border border-primary/35 bg-gradient-to-br from-primary/30 to-primary/10 shadow-lg shadow-primary/15 sm:h-24 sm:w-24">
+                      {isGroupImageIcon(group.icon) ? (
+                        <img src={group.icon} alt={`Icono de ${group.name}`} className="h-full w-full scale-[1.08] object-cover" />
+                      ) : (
+                        <span className="text-5xl sm:text-6xl">{group.icon || "👥"}</span>
+                      )}
                     </div>
 
                     <div className="min-w-0 flex-1">
@@ -968,18 +1235,26 @@ export default function GroupDetailPage() {
                         ) : null}
                       </div>
                       <p className="mt-2 text-sm leading-relaxed text-muted-foreground sm:text-base">
-                        {group.description || "Comparte gastos, registra pagos y controla quién va al día dentro del grupo."}
+                        {group.description || "No hay descripción."}
                       </p>
                     </div>
-                  </div>
 
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex w-full gap-2 sm:w-auto">
+                    <div className="hidden shrink-0 items-center gap-2 md:flex md:self-center">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={openEditGroupModal}
+                        className="h-10 rounded-xl border-primary/40 bg-background/80"
+                        disabled={!canManageMembers}
+                      >
+                        <PencilLine className="h-4 w-4" />
+                        Editar grupo
+                      </Button>
                       <Button
                         type="button"
                         variant="outline"
                         onClick={openShareGroupModal}
-                        className="h-10 flex-1 rounded-xl border-primary/40 bg-background/80 sm:flex-none"
+                        className="h-10 rounded-xl border-primary/40 bg-background/80"
                         disabled={!currentMember || !canManageMembers}
                       >
                         <Share2 className="h-4 w-4" />
@@ -988,11 +1263,36 @@ export default function GroupDetailPage() {
                       <Button
                         type="button"
                         onClick={openAddExpenseModal}
-                        className="hidden h-10 rounded-xl md:flex"
+                        className="h-10 rounded-xl"
                         disabled={members.length === 0}
                       >
                         <Plus className="h-4 w-4" />
                         Añadir gasto
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="flex md:hidden">
+                    <div className="flex w-full gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={openEditGroupModal}
+                        className="h-10 flex-1 rounded-xl border-primary/40 bg-background/80"
+                        disabled={!canManageMembers}
+                      >
+                        <PencilLine className="h-4 w-4" />
+                        Editar grupo
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={openShareGroupModal}
+                        className="h-10 flex-1 rounded-xl border-primary/40 bg-background/80"
+                        disabled={!currentMember || !canManageMembers}
+                      >
+                        <Share2 className="h-4 w-4" />
+                        Compartir grupo
                       </Button>
                     </div>
                   </div>
@@ -1036,7 +1336,7 @@ export default function GroupDetailPage() {
               }
             }}
           >
-            <DialogContent className="w-[95vw] max-w-md rounded-2xl p-4 sm:p-6">
+            <DialogContent className="w-[96vw] max-w-4xl rounded-2xl p-4 sm:p-6 lg:max-w-5xl">
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
                   <Share2 className="h-5 w-5 text-primary" />
@@ -1047,8 +1347,8 @@ export default function GroupDetailPage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="space-y-4">
-                <div className="flex min-h-[250px] items-center justify-center rounded-2xl border border-dashed border-primary/30 bg-primary/5 p-4">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)] lg:gap-6">
+                <div className="flex min-h-[280px] items-center justify-center rounded-2xl border border-dashed border-primary/30 bg-primary/5 p-4 sm:min-h-[340px]">
                   {isGeneratingShareLink && !shareInviteUrl ? (
                     <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
                       <LoaderCircle className="h-6 w-6 animate-spin" />
@@ -1056,9 +1356,9 @@ export default function GroupDetailPage() {
                     </div>
                   ) : shareInviteUrl ? (
                     <img
-                      src={`https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(shareInviteUrl)}`}
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=${encodeURIComponent(shareInviteUrl)}`}
                       alt={`QR para unirse a ${groupName}`}
-                      className="h-56 w-56 rounded-xl bg-white p-2"
+                      className="h-60 w-60 rounded-xl bg-white p-2 shadow-sm sm:h-72 sm:w-72"
                     />
                   ) : (
                     <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
@@ -1068,28 +1368,159 @@ export default function GroupDetailPage() {
                   )}
                 </div>
 
-                {shareInviteUrl ? (
-                  <div className="space-y-2">
-                    <p className="text-xs text-muted-foreground">Enlace de invitación</p>
-                    <p className="break-all rounded-xl bg-muted px-3 py-2 text-xs text-muted-foreground">{shareInviteUrl}</p>
-                  </div>
-                ) : null}
+                <div className="space-y-4">
+                  {shareInviteUrl ? (
+                    <div className="space-y-2 rounded-2xl border border-border/70 bg-card/40 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Enlace de invitación</p>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <p className="flex-1 break-all rounded-xl bg-muted px-3 py-2 text-xs text-muted-foreground">{shareInviteUrl}</p>
+                        <Button type="button" variant="outline" onClick={handleCopyShareLink} disabled={isGeneratingShareLink} className="shrink-0">
+                          <Copy className="h-4 w-4" />
+                          Copiar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
 
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  <Button type="button" variant="outline" onClick={handleCopyShareLink} disabled={isGeneratingShareLink}>
-                    <Copy className="h-4 w-4" />
-                    Copiar enlace de invitación
-                  </Button>
-                  <Button type="button" variant="outline" onClick={handleShareWhatsApp} disabled={isGeneratingShareLink}>
-                    <MessageCircleMore className="h-4 w-4" />
-                    Compartir en WhatsApp
-                  </Button>
-                  <Button type="button" onClick={handleShareNative} disabled={isGeneratingShareLink}>
-                    <Share2 className="h-4 w-4" />
-                    Compartir de otra forma
-                  </Button>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleShareWhatsApp}
+                      disabled={isGeneratingShareLink}
+                      className="h-11 w-full justify-center whitespace-nowrap rounded-xl px-4 text-sm font-medium"
+                    >
+                      <MessageCircleMore className="h-4 w-4" />
+                      Enviar por WhatsApp
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleShareNative}
+                      disabled={isGeneratingShareLink}
+                      className="h-11 w-full justify-center whitespace-nowrap rounded-xl px-4 text-sm font-medium"
+                    >
+                      <Share2 className="h-4 w-4" />
+                      Enviar de otra forma
+                    </Button>
+                  </div>
                 </div>
               </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isEditGroupModalOpen} onOpenChange={setIsEditGroupModalOpen}>
+            <DialogContent className="max-h-[88vh] w-[95vw] max-w-lg overflow-y-auto rounded-2xl border border-primary/20 bg-gradient-to-b from-background via-background to-card/30 p-4 sm:p-6">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <PencilLine className="h-5 w-5 text-primary" />
+                  Editar grupo
+                </DialogTitle>
+                <DialogDescription>
+                  Personaliza icono, nombre y descripción del grupo.
+                </DialogDescription>
+              </DialogHeader>
+
+              <form onSubmit={handleUpdateGroupInfo} className="space-y-5">
+                <div className="space-y-2 rounded-2xl border border-border/70 bg-card/40 p-4">
+                  <Label>Icono del grupo</Label>
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                    <div className="mb-3 flex items-center gap-3">
+                      <div className="flex h-28 w-28 shrink-0 aspect-square items-center justify-center overflow-hidden rounded-2xl border border-primary/35 bg-background/80 text-4xl shadow-sm shadow-primary/10 sm:h-32 sm:w-32">
+                        {isGroupImageIcon(groupEditForm.icon) ? (
+                          <img src={groupEditForm.icon} alt="Vista previa del icono del grupo" className="h-full w-full scale-[1.08] object-cover" />
+                        ) : (
+                          <span>{groupEditForm.icon || "👥"}</span>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-sm text-muted-foreground">Selecciona un icono visual o sube una foto para identificar rápido el grupo.</p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => groupIconFileInputRef.current?.click()}
+                            disabled={isUploadingGroupIcon}
+                            className="h-8 rounded-lg"
+                          >
+                            {isUploadingGroupIcon ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                            {isUploadingGroupIcon ? "Subiendo..." : "Subir foto"}
+                          </Button>
+                          {isGroupImageIcon(groupEditForm.icon) ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setGroupEditForm((current) => ({ ...current, icon: "👥" }))}
+                              className="h-8 rounded-lg border-primary/35 bg-background/70 text-foreground hover:border-primary/55 hover:bg-primary/10"
+                            >
+                              Quitar foto
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                    <input
+                      ref={groupIconFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleUploadGroupIcon}
+                    />
+                    <div className="grid max-h-64 grid-cols-6 gap-2 overflow-y-auto pr-1 sm:grid-cols-8">
+                      {EMOJI_OPTIONS.map((emoji, index) => {
+                        const isSelected = groupEditForm.icon === emoji;
+
+                        return (
+                          <button
+                            key={`group-icon-${emoji}-${index}`}
+                            type="button"
+                            onClick={() => setGroupEditForm((current) => ({ ...current, icon: emoji }))}
+                            className={isSelected
+                              ? "flex h-10 w-10 items-center justify-center rounded-xl border border-primary/70 bg-primary/20 text-2xl shadow-[0_0_0_1px_rgba(14,165,233,0.45)]"
+                              : "flex h-10 w-10 items-center justify-center rounded-xl border border-border/40 bg-background/55 text-2xl transition-colors hover:border-primary/45 hover:bg-primary/10"}
+                            title={`Usar icono ${emoji}`}
+                          >
+                            {emoji}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-2 rounded-2xl border border-border/70 bg-card/40 p-4">
+                  <Label htmlFor="group-name">Nombre</Label>
+                  <Input
+                    id="group-name"
+                    value={groupEditForm.name}
+                    onChange={(event) => setGroupEditForm((current) => ({ ...current, name: event.target.value }))}
+                    className="h-11 rounded-xl"
+                    placeholder="Nombre del grupo"
+                  />
+                </div>
+
+                <div className="space-y-2 rounded-2xl border border-border/70 bg-card/40 p-4">
+                  <Label htmlFor="group-description">Descripción</Label>
+                  <Textarea
+                    id="group-description"
+                    value={groupEditForm.description}
+                    onChange={(event) => setGroupEditForm((current) => ({ ...current, description: event.target.value }))}
+                    className="min-h-[92px] rounded-xl"
+                    placeholder="¿Para qué es este grupo?"
+                  />
+                </div>
+
+                <DialogFooter className="gap-2">
+                  <Button type="button" variant="outline" onClick={() => setIsEditGroupModalOpen(false)} disabled={isUpdatingGroupInfo}>
+                    Cancelar
+                  </Button>
+                  <Button type="submit" disabled={isUpdatingGroupInfo}>
+                    {isUpdatingGroupInfo ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <PencilLine className="h-4 w-4" />}
+                    {isUpdatingGroupInfo ? "Guardando..." : "Guardar cambios"}
+                  </Button>
+                </DialogFooter>
+              </form>
             </DialogContent>
           </Dialog>
 
@@ -1101,15 +1532,16 @@ export default function GroupDetailPage() {
                 setSelectedExpenseId(null);
                 setIsDetailIconPickerOpen(false);
                 setIsExpenseEditMode(false);
+                setIsDeleteExpenseConfirmOpen(false);
               }
             }}
           >
-            <DialogContent className="max-h-[85vh] w-[95vw] max-w-2xl overflow-y-auto p-4 sm:p-6">
+            <DialogContent className="max-h-[88vh] w-[95vw] max-w-2xl overflow-y-auto rounded-2xl border border-primary/20 bg-gradient-to-b from-background via-background to-card/30 p-4 sm:p-6 [&>button]:hidden">
               {selectedExpense ? (
                 <>
-                  <DialogHeader className="relative">
-                    <DialogTitle className="flex items-center gap-2">
-                      <div className="relative">
+                  <DialogHeader className="relative space-y-3 rounded-2xl border border-primary/20 bg-primary/5 p-4 sm:p-5">
+                    <DialogTitle className="flex items-center justify-between gap-3">
+                      <div className="relative flex min-w-0 items-center gap-3">
                         <button
                           ref={detailIconTriggerRef}
                           type="button"
@@ -1119,7 +1551,7 @@ export default function GroupDetailPage() {
                             }
                             setIsDetailIconPickerOpen((current) => !current);
                           }}
-                          className={canEditSelectedExpense ? "cursor-pointer text-2xl transition-transform hover:scale-110" : "text-2xl"}
+                          className={canEditSelectedExpense ? "flex h-11 w-11 cursor-pointer items-center justify-center rounded-xl border border-primary/30 bg-background/70 text-2xl transition-transform hover:scale-105" : "flex h-11 w-11 items-center justify-center rounded-xl border border-border/60 bg-background/60 text-2xl"}
                           title={canEditSelectedExpense ? "Click para cambiar icono" : "Icono del gasto"}
                         >
                           {selectedExpense.icon || "💰"}
@@ -1158,40 +1590,63 @@ export default function GroupDetailPage() {
                             </div>
                           </div>
                         ) : null}
+                        <span className="truncate">{selectedExpense.description}</span>
                       </div>
-                      <span>{selectedExpense.description}</span>
+
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                          {formatCurrency(selectedExpense.amount)}
+                        </span>
+                        <DialogClose asChild>
+                          <button
+                            type="button"
+                            className="flex h-8 w-8 items-center justify-center rounded-full border border-primary/25 bg-background/85 text-muted-foreground transition-colors hover:bg-primary/15 hover:text-primary"
+                            aria-label="Cerrar detalle del gasto"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </DialogClose>
+                      </div>
                     </DialogTitle>
-                    <DialogDescription>
-                      Total: {formatCurrency(selectedExpense.amount)} · Reparto {selectedExpense.splitMode === "custom" ? "personalizado" : "igual"}
+                    <DialogDescription className="text-xs sm:text-sm">
+                      Reparto {selectedExpense.splitMode === "custom" ? "personalizado" : "igual"}
                     </DialogDescription>
                   </DialogHeader>
 
-                  <div className="space-y-4 rounded-xl border border-border/60 p-4">
-                    <p className="text-sm font-semibold">Información del gasto</p>
+                  <div className="space-y-4 rounded-2xl border border-border/60 bg-card/45 p-4 sm:p-5">
+                    <p className="flex items-center gap-2 text-sm font-semibold">
+                      <CalendarDays className="h-4 w-4 text-primary" />
+                      Información del gasto
+                    </p>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <p className="text-xs text-muted-foreground">Pagado por</p>
-                        <p className="text-sm font-medium">{getMemberLabel(members.find((m) => m.id === selectedExpense.paidByMemberId) || { displayName: "Desconocido" })}</p>
+                      <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Pagado por</p>
+                        <p className="mt-1 text-sm font-semibold">{getMemberLabel(members.find((m) => m.id === selectedExpense.paidByMemberId) || { displayName: "Desconocido" })}</p>
                       </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Fecha y hora</p>
-                        <p className="text-sm font-medium">{new Date(selectedExpense.createdAt).toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" })}, {new Date(selectedExpense.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</p>
+                      <div className="rounded-xl border border-border/50 bg-background/50 p-3">
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Fecha y hora</p>
+                        <p className="mt-1 text-sm font-semibold">{new Date(selectedExpense.createdAt).toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" })}, {new Date(selectedExpense.createdAt).toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="space-y-3 rounded-xl border border-border/60 p-4">
-                    <p className="text-sm font-semibold">Reparto entre miembros</p>
+                  <div className="space-y-3 rounded-2xl border border-border/60 bg-card/45 p-4 sm:p-5">
+                    <p className="flex items-center gap-2 text-sm font-semibold">
+                      <Users className="h-4 w-4 text-primary" />
+                      Reparto entre miembros
+                    </p>
                     {selectedExpenseSplits.length > 0 ? (
                       <div className="space-y-2">
                         {selectedExpenseSplits.map((split) => {
                           const member = members.find((item) => item.id === split.memberId);
 
                           return (
-                            <div key={split.id} className="flex items-center justify-between rounded-lg border border-border/40 px-3 py-2">
+                            <div key={split.id} className="flex items-center justify-between rounded-xl border border-border/40 bg-background/45 px-3 py-2.5">
                               <div>
                                 <p className="text-sm font-medium">{getMemberLabel(member || { displayName: "Desconocido" })}</p>
-                                <p className="text-xs text-muted-foreground">{split.isSettled ? "Pagado" : "Pendiente"}</p>
+                                <p className={split.isSettled ? "text-xs font-medium text-emerald-600 dark:text-emerald-300" : "text-xs font-medium text-amber-600 dark:text-amber-300"}>
+                                  {split.isSettled ? "Pagado" : "Pendiente"}
+                                </p>
                               </div>
                               <p className="text-sm font-semibold">{formatCurrency(split.shareAmount)}</p>
                             </div>
@@ -1326,7 +1781,7 @@ export default function GroupDetailPage() {
                       ) : null}
 
                       <DialogFooter>
-                        <Button type="submit" disabled={isUpdatingExpense}>
+                        <Button type="submit" disabled={isUpdatingExpense} className="h-10 rounded-xl">
                           {isUpdatingExpense ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <CircleDollarSign className="h-4 w-4" />}
                           {isUpdatingExpense ? "Guardando..." : "Guardar cambios"}
                         </Button>
@@ -1335,6 +1790,47 @@ export default function GroupDetailPage() {
                   ) : null}
                 </>
               ) : null}
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={isDeleteExpenseConfirmOpen} onOpenChange={setIsDeleteExpenseConfirmOpen}>
+            <DialogContent className="max-w-md rounded-2xl border border-destructive/35 bg-background p-5 sm:p-6">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2 text-destructive">
+                  <Trash2 className="h-5 w-5" />
+                  Eliminar gasto
+                </DialogTitle>
+                <DialogDescription>
+                  ¿Seguro que quieres eliminar este gasto? Esta acción no se puede deshacer.
+                </DialogDescription>
+              </DialogHeader>
+
+              {selectedExpense ? (
+                <div className="rounded-xl border border-border/60 bg-card/40 px-3 py-2 text-sm">
+                  <p className="font-semibold">{selectedExpense.description}</p>
+                  <p className="text-muted-foreground">{formatCurrency(selectedExpense.amount)}</p>
+                </div>
+              ) : null}
+
+              <DialogFooter className="gap-2 sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsDeleteExpenseConfirmOpen(false)}
+                  disabled={isDeletingExpense}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={handleConfirmDeleteExpense}
+                  disabled={isDeletingExpense}
+                >
+                  {isDeletingExpense ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  {isDeletingExpense ? "Eliminando..." : "Sí, eliminar"}
+                </Button>
+              </DialogFooter>
             </DialogContent>
           </Dialog>
 
@@ -1528,127 +2024,145 @@ export default function GroupDetailPage() {
             </DialogContent>
           </Dialog>
 
-          <section className="space-y-8">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-xl">
-                  <ReceiptText className="h-5 w-5 text-primary" />
+          <section>
+            <Tabs defaultValue="history" className="space-y-4">
+              <TabsList className="grid h-auto w-full grid-cols-2 rounded-xl bg-card/70 p-1">
+                <TabsTrigger value="history" className="rounded-lg text-xs sm:text-sm">
                   Historial de gastos
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {sortedExpenses.length > 0 ? (
-                  groupedExpenses.map(([dateLabel, expensesForDate]) => (
-                    <div key={dateLabel} className="space-y-4">
-                      <h3 className="text-sm font-bold uppercase tracking-wide text-muted-foreground/70">{dateLabel}</h3>
-                      <div className="space-y-2">
-                        {expensesForDate.map((expense) => {
-                          const payer = members.find((item) => item.id === expense.paidByMemberId);
-                          const isMyExpense = payer?.userId === user?.id;
+                </TabsTrigger>
+                <TabsTrigger value="members" className="rounded-lg text-xs sm:text-sm">
+                  Miembros y roles
+                </TabsTrigger>
+              </TabsList>
 
-                          return (
-                            <div key={expense.id} className="relative">
-                              <div
-                                className="flex cursor-pointer flex-col items-start gap-3 rounded-xl border border-border/50 px-4 py-3 transition-colors hover:bg-muted/20 sm:flex-row sm:items-center sm:justify-between"
-                                onClick={() => openExpenseDetail(expense.id)}
-                              >
-                                <div className="flex items-center gap-3 flex-1 min-w-0">
-                                  <span className="text-2xl flex-shrink-0" title="Icono del gasto">
-                                    {expense.icon || "💰"}
-                                  </span>
-                                  <div className="flex-1 min-w-0">
-                                    <p className="font-semibold text-sm">{expense.description}</p>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      <span className="hidden sm:inline">Pagado por </span>
-                                      <b>{getMemberLabel(payer || { displayName: "Desconocido" })}</b>
-                                      {isMyExpense && " (yo)"}
-                                    </p>
+              <TabsContent value="history" className="mt-0">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <ReceiptText className="h-5 w-5 text-primary" />
+                      Historial de gastos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {sortedExpenses.length > 0 ? (
+                      groupedExpenses.map(([dateLabel, expensesForDate]) => (
+                        <div key={dateLabel} className="space-y-4">
+                          <h3 className="text-sm font-bold uppercase tracking-wide text-muted-foreground/70">{dateLabel}</h3>
+                          <div className="space-y-2">
+                            {expensesForDate.map((expense) => {
+                              const payer = members.find((item) => item.id === expense.paidByMemberId);
+                              const isMyExpense = payer?.userId === user?.id;
+
+                              return (
+                                <div key={expense.id} className="relative">
+                                  <div
+                                    className="flex cursor-pointer flex-col items-start gap-2 rounded-xl border border-border/50 px-4 py-2.5 transition-colors hover:bg-muted/20 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:py-3"
+                                    onClick={() => openExpenseDetail(expense.id)}
+                                  >
+                                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                                      <span className="text-2xl flex-shrink-0" title="Icono del gasto">
+                                        {expense.icon || "💰"}
+                                      </span>
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-semibold">{expense.description}</p>
+                                        <p className="mt-1 text-xs text-muted-foreground">
+                                          <span>Pagado por </span>
+                                          <b>{getMemberLabel(payer || { displayName: "Desconocido" })}</b>
+                                          {isMyExpense && " (yo)"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="self-end -mt-3 rounded-lg bg-emerald-500/15 px-2.5 py-1.5 text-right sm:self-end sm:-mt-2">
+                                      <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                                        {formatCurrency(expense.amount)}
+                                      </p>
+                                    </div>
                                   </div>
                                 </div>
-                                <div className="self-end rounded-lg bg-emerald-500/15 px-3 py-2 text-right sm:self-auto">
-                                  <p className="text-sm font-bold text-emerald-700 dark:text-emerald-300">
-                                    {formatCurrency(expense.amount)}
-                                  </p>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-dashed bg-card/50 px-4 py-10 text-center">
-                    <ReceiptText className="mx-auto mb-2 h-10 w-10 text-muted-foreground/30" />
-                    <p className="text-sm text-muted-foreground">Todavía no hay gastos en este grupo.</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-xl">
-                  <Users className="h-5 w-5 text-primary" />
-                  Miembros y roles
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {balances.map(({ member, balance, status }) => {
-                  const isOwner = member.role === "owner";
-                  const isAdmin = member.role === "admin";
-                  const isSelf = member.userId === user?.id;
-
-                  return (
-                    <div key={member.id} className="rounded-2xl border border-border/70 p-4">
-                      <div className="flex items-start gap-3">
-                        <Avatar className="h-12 w-12">
-                          <AvatarImage src={member.avatar} alt={member.displayName} />
-                          <AvatarFallback>{getMemberLabel(member).charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-semibold">{getMemberLabel(member)}</p>
-                            <Badge variant="outline" className="rounded-full border-primary/20 bg-primary/10 text-primary">
-                              {member.role}
-                            </Badge>
-                            <Badge variant="secondary" className="rounded-full">{status}</Badge>
+                              );
+                            })}
                           </div>
-                          <p className="mt-1 text-sm text-muted-foreground">{member.email}</p>
-                          <p className="mt-2 text-sm font-medium">Balance: {formatCurrency(balance)}</p>
                         </div>
+                      ))
+                    ) : (
+                      <div className="rounded-2xl border border-dashed bg-card/50 px-4 py-10 text-center">
+                        <ReceiptText className="mx-auto mb-2 h-10 w-10 text-muted-foreground/30" />
+                        <p className="text-sm text-muted-foreground">Todavía no hay gastos en este grupo.</p>
                       </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-                      {currentMember && canManageMembers && !isOwner ? (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={isAdmin ? "default" : "outline"}
-                            onClick={() => handleChangeRole(member.id, isAdmin ? "member" : "admin")}
-                            disabled={activeMemberRoleId === member.id || isSelf}
-                          >
-                            {activeMemberRoleId === member.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
-                            {isAdmin ? "Quitar admin" : "Hacer admin"}
-                          </Button>
+              <TabsContent value="members" className="mt-0">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-xl">
+                      <Users className="h-5 w-5 text-primary" />
+                      Miembros y roles
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {balances.map(({ member, balance, status }) => {
+                      const isOwner = member.role === "owner";
+                      const isAdmin = member.role === "admin";
+                      const isSelf = member.userId === user?.id;
+
+                      return (
+                        <div key={member.id} className="rounded-2xl border border-border/70 p-4">
+                          <div className="flex items-start gap-3">
+                            <Avatar className="h-12 w-12">
+                              <AvatarImage src={member.avatar} alt={member.displayName} />
+                              <AvatarFallback>{getMemberLabel(member).charAt(0)}</AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-semibold">{getMemberLabel(member)}</p>
+                                <Badge variant="outline" className="rounded-full border-primary/20 bg-primary/10 text-primary">
+                                  {member.role}
+                                </Badge>
+                                <Badge variant="secondary" className="rounded-full">{status}</Badge>
+                              </div>
+                              <p className="mt-1 text-sm text-muted-foreground">{member.email}</p>
+                              <p className="mt-2 text-sm font-medium">Balance: {formatCurrency(balance)}</p>
+                            </div>
+                          </div>
+
+                          {currentMember && canManageMembers && !isOwner ? (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant={isAdmin ? "default" : "outline"}
+                                onClick={() => handleChangeRole(member.id, isAdmin ? "member" : "admin")}
+                                disabled={activeMemberRoleId === member.id || isSelf}
+                              >
+                                {activeMemberRoleId === member.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Shield className="h-4 w-4" />}
+                                {isAdmin ? "Quitar admin" : "Hacer admin"}
+                              </Button>
+                            </div>
+                          ) : null}
                         </div>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
           </section>
 
-          <Button
-            type="button"
-            onClick={openAddExpenseModal}
-            disabled={members.length === 0}
-            className="fixed right-4 z-40 h-12 w-12 rounded-full p-0 shadow-xl bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] md:bottom-6 md:right-6 md:h-14 md:w-auto md:px-5"
-          >
-            <Plus className="h-5 w-5" />
-            <span className="hidden md:inline">Añadir gasto</span>
-          </Button>
+          <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] right-4 z-40 flex flex-col items-center md:bottom-6 md:right-6">
+            <Button
+              type="button"
+              onClick={openAddExpenseModal}
+              disabled={members.length === 0}
+              className="h-12 w-12 rounded-full p-0 shadow-xl md:h-14 md:w-auto md:px-5"
+            >
+              <Plus className="h-5 w-5" />
+              <span className="hidden md:inline">Añadir gasto</span>
+            </Button>
+            <span className="mt-1 text-[11px] font-medium text-muted-foreground md:hidden">Añadir gasto</span>
+          </div>
         </main>
       </div>
     </ProtectedRoute>
