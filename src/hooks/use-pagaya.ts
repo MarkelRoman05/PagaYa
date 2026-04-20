@@ -6,7 +6,7 @@ import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App, type URLOpenListenerEvent } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { PushNotifications } from '@capacitor/push-notifications';
-import { AppNotification, AppState, AuthCredentials, Debt, DebtStatus, DebtType, DeviceSession, Friend, FriendInvitation, InvitationStatus, NotificationChannel, NotificationChannelSettings, NotificationPreference, NotificationPreferences, NotificationType, RegisterCredentials, Theme } from '@/lib/types';
+import { AppNotification, AppState, AuthCredentials, Debt, DebtStatus, DebtType, DeviceSession, Friend, FriendInvitation, Group, GroupExpense, GroupExpenseSplit, GroupInvitation, GroupInvitationChannel, GroupInvitationStatus, GroupMember, GroupRole, GroupSplitMode, InvitationStatus, NotificationChannel, NotificationChannelSettings, NotificationPreference, NotificationPreferences, NotificationType, RegisterCredentials, Theme } from '@/lib/types';
 import { getSupabaseBrowserClient, isSupabaseConfigured } from '@/lib/supabase';
 
 type AddFriendInput = Pick<Friend, 'name' | 'email' | 'avatar'>;
@@ -18,6 +18,47 @@ type UpdateProfileInput = {
 };
 type SendInvitationInput = {
   username: string;
+};
+type CreateGroupInput = {
+  name: string;
+  description?: string;
+};
+type SendGroupInvitationInput = {
+  groupId: string;
+  deliveryChannel: GroupInvitationChannel;
+  targetContact: string;
+};
+type CreateGroupExpenseInput = {
+  groupId: string;
+  description: string;
+  amount: number;
+  paidByMemberId: string;
+  expenseDate?: string;
+  splitMode?: GroupSplitMode;
+  participantMemberIds?: string[];
+  customShares?: Array<{
+    memberId: string;
+    amount: number;
+  }>;
+};
+type UpdateGroupExpenseInput = {
+  expenseId: string;
+  description: string;
+  amount: number;
+  paidByMemberId: string;
+  splitMode?: GroupSplitMode;
+  participantMemberIds?: string[];
+  customShares?: Array<{
+    memberId: string;
+    amount: number;
+  }>;
+};
+type UpdateGroupMemberRoleInput = {
+  memberId: string;
+  role: GroupRole;
+};
+type SettleGroupExpenseShareInput = {
+  splitId: string;
 };
 
 const AVATAR_BUCKET = 'avatars';
@@ -90,6 +131,70 @@ interface NotificationRow {
   read_at: string | null;
 }
 
+interface GroupRow {
+  id: string;
+  created_by_id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface GroupMemberRow {
+  id: string;
+  group_id: string;
+  user_id: string;
+  role: GroupRole;
+  display_name: string;
+  username: string | null;
+  email: string;
+  avatar: string | null;
+  joined_at: string;
+  updated_at: string;
+}
+
+interface GroupInvitationRow {
+  id: string;
+  group_id: string;
+  from_user_id: string;
+  delivery_channel: GroupInvitationChannel;
+  delivery_target: string | null;
+  to_username: string | null;
+  to_email: string;
+  to_user_id: string | null;
+  invited_name: string;
+  inviter_name: string;
+  inviter_username: string | null;
+  inviter_email: string;
+  status: GroupInvitationStatus;
+  created_at: string;
+}
+
+interface GroupExpenseRow {
+  id: string;
+  group_id: string;
+  created_by_id: string;
+  description: string;
+  amount: number;
+  paid_by_member_id: string;
+  split_mode: GroupSplitMode;
+  icon: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface GroupExpenseSplitRow {
+  id: string;
+  expense_id: string;
+  group_id: string;
+  member_id: string;
+  share_amount: number;
+  is_settled: boolean;
+  settled_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 type RealtimeRow = {
   user_id?: string;
   other_user_id?: string | null;
@@ -125,6 +230,15 @@ interface PagaYaContextValue extends AppState {
   refreshData: (options?: RefreshDataOptions) => Promise<void>;
   refreshDeviceSessions: () => Promise<void>;
   sendInvitation: (invitation: SendInvitationInput) => Promise<FriendInvitation>;
+  createGroup: (group: CreateGroupInput) => Promise<Group>;
+  sendGroupInvitation: (invitation: SendGroupInvitationInput) => Promise<GroupInvitation>;
+  acceptGroupInvitation: (invitationId: string) => Promise<GroupMember>;
+  rejectGroupInvitation: (invitationId: string) => Promise<void>;
+  updateGroupMemberRole: (input: UpdateGroupMemberRoleInput) => Promise<void>;
+  addGroupExpense: (expense: CreateGroupExpenseInput) => Promise<GroupExpense>;
+  updateGroupExpense: (expense: UpdateGroupExpenseInput) => Promise<GroupExpense>;
+  deleteGroupExpense: (expenseId: string) => Promise<void>;
+  settleGroupExpenseShare: (input: SettleGroupExpenseShareInput) => Promise<GroupExpenseSplit>;
   acceptInvitation: (invitationId: string) => Promise<Friend>;
   rejectInvitation: (invitationId: string) => Promise<void>;
   removeFriend: (friendId: string) => Promise<void>;
@@ -154,6 +268,11 @@ const NOTIFICATION_TYPES: NotificationType[] = [
   'debt_payment_requested',
   'debt_paid',
   'debt_payment_rejected',
+  'group_invitation_received',
+  'group_invitation_accepted',
+  'group_invitation_rejected',
+  'group_expense_created',
+  'group_share_settled',
 ];
 
 const DEFAULT_NOTIFICATION_PREFERENCE: NotificationPreference = {
@@ -169,6 +288,11 @@ const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   debt_payment_requested: { ...DEFAULT_NOTIFICATION_PREFERENCE },
   debt_paid: { ...DEFAULT_NOTIFICATION_PREFERENCE },
   debt_payment_rejected: { ...DEFAULT_NOTIFICATION_PREFERENCE },
+  group_invitation_received: { ...DEFAULT_NOTIFICATION_PREFERENCE },
+  group_invitation_accepted: { ...DEFAULT_NOTIFICATION_PREFERENCE },
+  group_invitation_rejected: { ...DEFAULT_NOTIFICATION_PREFERENCE },
+  group_expense_created: { ...DEFAULT_NOTIFICATION_PREFERENCE },
+  group_share_settled: { ...DEFAULT_NOTIFICATION_PREFERENCE },
 };
 
 const DEFAULT_NOTIFICATION_CHANNEL_SETTINGS: NotificationChannelSettings = {
@@ -180,6 +304,11 @@ const EMPTY_STATE: AppState = {
   friends: [],
   invitations: [],
   debts: [],
+  groups: [],
+  groupMembers: [],
+  groupInvitations: [],
+  groupExpenses: [],
+  groupExpenseSplits: [],
   notifications: [],
 };
 
@@ -251,6 +380,80 @@ function mapDebtRow(row: DebtRow): Debt {
     paymentRequestRejectedAt: row.payment_request_rejected_at ?? undefined,
     paymentRequestRejectedByUserId: row.payment_request_rejected_by ?? undefined,
     paymentRequestRejectionCount: row.payment_request_rejection_count ?? 0,
+  };
+}
+
+function mapGroupRow(row: GroupRow): Group {
+  return {
+    id: row.id,
+    createdById: row.created_by_id,
+    name: row.name,
+    description: row.description ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapGroupMemberRow(row: GroupMemberRow): GroupMember {
+  return {
+    id: row.id,
+    groupId: row.group_id,
+    userId: row.user_id,
+    role: row.role,
+    displayName: row.display_name,
+    username: row.username ?? undefined,
+    email: row.email,
+    avatar: row.avatar ?? undefined,
+    joinedAt: row.joined_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapGroupInvitationRow(row: GroupInvitationRow): GroupInvitation {
+  return {
+    id: row.id,
+    groupId: row.group_id,
+    fromUserId: row.from_user_id,
+    deliveryChannel: row.delivery_channel,
+    deliveryTarget: row.delivery_target ?? undefined,
+    toUserName: row.to_username ?? undefined,
+    toEmail: row.to_email,
+    toUserId: row.to_user_id ?? undefined,
+    invitedName: row.invited_name,
+    inviterName: row.inviter_name,
+    inviterUserName: row.inviter_username ?? undefined,
+    inviterEmail: row.inviter_email,
+    status: row.status,
+    createdAt: row.created_at,
+  };
+}
+
+function mapGroupExpenseRow(row: GroupExpenseRow): GroupExpense {
+  return {
+    id: row.id,
+    groupId: row.group_id,
+    createdById: row.created_by_id,
+    description: row.description,
+    amount: row.amount,
+    paidByMemberId: row.paid_by_member_id,
+    splitMode: row.split_mode,
+    icon: row.icon ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapGroupExpenseSplitRow(row: GroupExpenseSplitRow): GroupExpenseSplit {
+  return {
+    id: row.id,
+    expenseId: row.expense_id,
+    groupId: row.group_id,
+    memberId: row.member_id,
+    shareAmount: row.share_amount,
+    isSettled: row.is_settled,
+    settledAt: row.settled_at ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -442,6 +645,29 @@ function getFriendlyErrorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function isMissingRelationError(error: unknown) {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const code = 'code' in error && typeof error.code === 'string' ? error.code : '';
+  const message = 'message' in error && typeof error.message === 'string' ? error.message : '';
+  const details = 'details' in error && typeof error.details === 'string' ? error.details : '';
+  const hint = 'hint' in error && typeof error.hint === 'string' ? error.hint : '';
+  const normalized = `${message} ${details} ${hint}`.toLowerCase();
+
+  if (code === '42P01' || code === 'PGRST204' || code === 'PGRST205') {
+    return true;
+  }
+
+  return normalized.includes('relation')
+    && (normalized.includes('does not exist') || normalized.includes('not exist'));
+}
+
+function logOptionalSchemaWarning(scope: string, error: unknown) {
+  console.warn(`Se omite la carga opcional de ${scope} porque faltan objetos en la base de datos.`, error);
 }
 
 function buildAuthRedirectUrl(nextPath: string, authProvider: string, authIntent?: string) {
@@ -700,12 +926,46 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
     }
 
     try {
+      const { data: myGroupMemberships, error: myGroupMembershipsError } = await supabase
+        .from('group_members')
+        .select('*')
+        .eq('user_id', activeUser.id)
+        .order('joined_at', { ascending: false });
+
+      const groupsSchemaUnavailable = Boolean(myGroupMembershipsError && isMissingRelationError(myGroupMembershipsError));
+
+      if (groupsSchemaUnavailable) {
+        logOptionalSchemaWarning('grupos (group_members)', myGroupMembershipsError);
+      } else if (myGroupMembershipsError) {
+        throw myGroupMembershipsError;
+      }
+
+      const groupIds = Array.from(new Set((groupsSchemaUnavailable ? [] : (myGroupMemberships ?? [])).map((row) => row.group_id)));
+
+      let groupInvitationsQueryData: GroupInvitationRow[] = [];
+
+      if (!groupsSchemaUnavailable) {
+        const { data, error: groupInvitationsError } = await supabase
+          .from('group_invitations')
+          .select('*')
+          .or(`from_user_id.eq.${activeUser.id},to_user_id.eq.${activeUser.id},to_email.eq.${activeUser.email}`)
+          .order('created_at', { ascending: false });
+
+        if (groupInvitationsError && isMissingRelationError(groupInvitationsError)) {
+          logOptionalSchemaWarning('grupos (group_invitations)', groupInvitationsError);
+        } else if (groupInvitationsError) {
+          throw groupInvitationsError;
+        } else {
+          groupInvitationsQueryData = (data ?? []) as GroupInvitationRow[];
+        }
+      }
+
       const [
         { data: friendsData, error: friendsError },
         { data: invitationsData, error: invitationsError },
         { data: debtsData, error: debtsError },
         { data: notificationsData, error: notificationsError },
-        { data: settingsData },
+        { data: settingsData, error: settingsError },
         { data: devicesData, error: devicesError },
       ] = await Promise.all([
         supabase.from('friends').select('*').eq('user_id', activeUser.id).order('created_at', { ascending: false }),
@@ -720,6 +980,61 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         supabase.from('user_device_sessions').select('*').eq('user_id', activeUser.id).is('revoked_at', null).order('last_seen_at', { ascending: false }),
       ]);
 
+      let groupsData: GroupRow[] = [];
+      let groupMembersData: GroupMemberRow[] = [];
+      let groupInvitationsData: GroupInvitationRow[] = groupInvitationsQueryData;
+      let groupExpensesData: GroupExpenseRow[] = [];
+      let groupExpenseSplitsData: GroupExpenseSplitRow[] = [];
+
+      if (groupIds.length > 0) {
+        const [
+          { data: groupsQueryData, error: groupsError },
+          { data: groupMembersQueryData, error: groupMembersError },
+          { data: groupExpensesQueryData, error: groupExpensesError },
+          { data: groupExpenseSplitsQueryData, error: groupExpenseSplitsError },
+        ] = await Promise.all([
+          supabase.from('groups').select('*').in('id', groupIds).order('created_at', { ascending: false }),
+          supabase.from('group_members').select('*').in('group_id', groupIds).order('joined_at', { ascending: false }),
+          supabase.from('group_expenses').select('*').in('group_id', groupIds).order('created_at', { ascending: false }),
+          supabase.from('group_expense_splits').select('*').in('group_id', groupIds).order('created_at', { ascending: false }),
+        ]);
+
+        if (groupsError && isMissingRelationError(groupsError)) {
+          logOptionalSchemaWarning('grupos (groups)', groupsError);
+          groupInvitationsData = [];
+        } else if (groupsError) {
+          throw groupsError;
+        }
+
+        if (groupMembersError && isMissingRelationError(groupMembersError)) {
+          logOptionalSchemaWarning('grupos (group_members)', groupMembersError);
+          groupInvitationsData = [];
+        } else if (groupMembersError) {
+          throw groupMembersError;
+        }
+
+        if (groupExpensesError && isMissingRelationError(groupExpensesError)) {
+          logOptionalSchemaWarning('grupos (group_expenses)', groupExpensesError);
+          groupInvitationsData = [];
+        } else if (groupExpensesError) {
+          throw groupExpensesError;
+        }
+
+        if (groupExpenseSplitsError && isMissingRelationError(groupExpenseSplitsError)) {
+          logOptionalSchemaWarning('grupos (group_expense_splits)', groupExpenseSplitsError);
+          groupInvitationsData = [];
+        } else if (groupExpenseSplitsError) {
+          throw groupExpenseSplitsError;
+        }
+
+        if (!groupsError && !groupMembersError && !groupExpensesError && !groupExpenseSplitsError) {
+          groupsData = (groupsQueryData ?? []) as GroupRow[];
+          groupMembersData = (groupMembersQueryData ?? []) as GroupMemberRow[];
+          groupExpensesData = (groupExpensesQueryData ?? []) as GroupExpenseRow[];
+          groupExpenseSplitsData = (groupExpenseSplitsQueryData ?? []) as GroupExpenseSplitRow[];
+        }
+      }
+
       if (friendsError) {
         throw friendsError;
       }
@@ -732,11 +1047,24 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         throw debtsError;
       }
 
-      if (notificationsError) {
+      const notificationsUnavailable = Boolean(notificationsError && isMissingRelationError(notificationsError));
+      if (notificationsUnavailable) {
+        logOptionalSchemaWarning('notificaciones (user_notifications)', notificationsError);
+      } else if (notificationsError) {
         throw notificationsError;
       }
 
-      if (devicesError) {
+      const settingsUnavailable = Boolean(settingsError && isMissingRelationError(settingsError));
+      if (settingsUnavailable) {
+        logOptionalSchemaWarning('ajustes (user_settings)', settingsError);
+      } else if (settingsError) {
+        throw settingsError;
+      }
+
+      const devicesUnavailable = Boolean(devicesError && isMissingRelationError(devicesError));
+      if (devicesUnavailable) {
+        logOptionalSchemaWarning('dispositivos (user_device_sessions)', devicesError);
+      } else if (devicesError) {
         throw devicesError;
       }
 
@@ -766,26 +1094,31 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         friends: (friendsData ?? []).map((row) => mapFriendRow(row as FriendRow)),
         invitations: mappedInvitations,
         debts: mappedDebts,
-        notifications: (notificationsData ?? []).map((row) => mapNotificationRow(row as NotificationRow)),
+        groups: groupsData.map((row) => mapGroupRow(row)),
+        groupMembers: groupMembersData.map((row) => mapGroupMemberRow(row)),
+        groupInvitations: groupInvitationsData.map((row) => mapGroupInvitationRow(row)),
+        groupExpenses: groupExpensesData.map((row) => mapGroupExpenseRow(row)),
+        groupExpenseSplits: groupExpenseSplitsData.map((row) => mapGroupExpenseSplitRow(row)),
+        notifications: (notificationsUnavailable ? [] : (notificationsData ?? [])).map((row) => mapNotificationRow(row as NotificationRow)),
       });
 
-      setDeviceSessions((devicesData ?? []).map((row) => mapDeviceSessionRow(row as DeviceSessionRow)));
+      setDeviceSessions((devicesUnavailable ? [] : (devicesData ?? [])).map((row) => mapDeviceSessionRow(row as DeviceSessionRow)));
 
       setNotificationPreferences(
-        normalizeNotificationPreferences(settingsData?.notification_preferences),
+        normalizeNotificationPreferences(settingsUnavailable ? null : settingsData?.notification_preferences),
       );
       setNotificationChannelsEnabled({
-        web: typeof settingsData?.notifications_enabled_web === 'boolean'
+        web: !settingsUnavailable && typeof settingsData?.notifications_enabled_web === 'boolean'
           ? settingsData.notifications_enabled_web
           : DEFAULT_NOTIFICATION_CHANNEL_SETTINGS.web,
-        app: typeof settingsData?.notifications_enabled_app === 'boolean'
+        app: !settingsUnavailable && typeof settingsData?.notifications_enabled_app === 'boolean'
           ? settingsData.notifications_enabled_app
           : DEFAULT_NOTIFICATION_CHANNEL_SETTINGS.app,
       });
 
       // Apply stored theme (only on first load, not on silent refresh polling)
       if (!silent) {
-        if (settingsData && typeof settingsData.theme === 'string') {
+        if (!settingsUnavailable && settingsData && typeof settingsData.theme === 'string') {
           setThemeState(settingsData.theme as Theme);
         } else {
           setThemeState('dark');
@@ -846,7 +1179,7 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
           await syncCurrentDeviceSession(currentSession);
           await refreshData();
         } catch (error) {
-          console.error('No se pudieron cargar los datos iniciales', error);
+          console.warn('No se pudieron cargar los datos iniciales', error);
         }
       } else {
         setState(EMPTY_STATE);
@@ -882,7 +1215,7 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
           await syncCurrentDeviceSession(nextSession);
           await refreshData();
         } catch (error) {
-          console.error('No se pudieron refrescar los datos del usuario', error);
+          console.warn('No se pudieron refrescar los datos del usuario', error);
         }
       })();
     });
@@ -1064,7 +1397,7 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
           await syncCurrentDeviceSession(session);
           await refreshData({ silent: true });
         } catch (error) {
-          console.error('No se pudieron refrescar los datos de sincronizacion', error);
+          console.warn('No se pudieron refrescar los datos de sincronizacion', error);
         }
       })();
     };
@@ -1560,6 +1893,532 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
     return createdInvitation;
   };
 
+  const createGroup = async (group: CreateGroupInput) => {
+    const { supabase } = await ensureAuthenticatedUser();
+    const normalizedName = group.name.trim();
+    const normalizedDescription = group.description?.trim() || null;
+
+    if (!normalizedName) {
+      throw new Error('El nombre del grupo no puede estar vacío.');
+    }
+
+    const { data, error } = await supabase.rpc('create_group', {
+      name_input: normalizedName,
+      description_input: normalizedDescription,
+    });
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo crear el grupo.'));
+    }
+
+    const createdGroup = mapGroupRow(Array.isArray(data) ? data[0] as GroupRow : data as GroupRow);
+
+    setState((currentState) => ({
+      ...currentState,
+      groups: [createdGroup, ...currentState.groups],
+    }));
+
+    scheduleRealtimeRefresh();
+
+    return createdGroup;
+  };
+
+  const sendGroupInvitation = async (invitation: SendGroupInvitationInput) => {
+    const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+    const deliveryChannel = invitation.deliveryChannel;
+    const targetContact = invitation.targetContact.trim();
+
+    if (deliveryChannel !== 'email' && deliveryChannel !== 'whatsapp') {
+      throw new Error('Selecciona un canal de invitación válido.');
+    }
+
+    if (!targetContact) {
+      throw new Error('Indica un email, usuario o teléfono para enviar la invitación.');
+    }
+
+    const targetGroup = state.groups.find((item) => item.id === invitation.groupId);
+
+    if (!targetGroup) {
+      throw new Error('No se encontró el grupo seleccionado.');
+    }
+
+    const currentMember = state.groupMembers.find((item) => item.groupId === invitation.groupId && item.userId === activeUser.id);
+
+    if (!currentMember) {
+      throw new Error('No formas parte de este grupo.');
+    }
+
+    if (currentMember.role === 'member') {
+      throw new Error('Solo los administradores del grupo pueden invitar a nuevos miembros.');
+    }
+
+    const normalizedContact = targetContact.toLowerCase();
+    const looksLikeEmail = normalizedContact.includes('@');
+    const looksLikeUsername = /^[a-z0-9_]{3,24}$/.test(normalizedContact);
+
+    const { data: targetUserData, error: targetUserError } = looksLikeUsername
+      ? await supabase.rpc('get_user_by_username', {
+          username_input: normalizedContact,
+        })
+      : { data: null, error: null };
+
+    if (targetUserError) {
+      throw new Error(getFriendlyErrorMessage(targetUserError, 'No se pudo buscar el usuario por nombre de usuario.'));
+    }
+
+    const targetUser = Array.isArray(targetUserData) ? targetUserData[0] : null;
+    const targetEmail = deliveryChannel === 'email'
+      ? (looksLikeEmail ? normalizedContact : targetUser?.email ?? '')
+      : targetUser?.email ?? '';
+
+    if (deliveryChannel === 'email' && !targetEmail) {
+      throw new Error('Introduce un email válido o un nombre de usuario existente para invitar por email.');
+    }
+
+    if (targetUser?.user_id === activeUser.id) {
+      throw new Error('No puedes invitarte a ti mismo.');
+    }
+
+    if (targetUser?.user_id && state.groupMembers.some((item) => item.groupId === invitation.groupId && item.userId === targetUser.user_id)) {
+      throw new Error('Ese usuario ya pertenece al grupo.');
+    }
+
+    const alreadyPending = state.groupInvitations.some((item) => {
+      if (item.groupId !== invitation.groupId || item.status !== 'pending') {
+        return false;
+      }
+
+      const sameResolvedUser = Boolean(targetUser?.user_id) && item.toUserId === targetUser?.user_id;
+      const sameDeliveryTarget = item.deliveryTarget?.toLowerCase() === normalizedContact;
+
+      return sameResolvedUser || sameDeliveryTarget;
+    });
+
+    if (alreadyPending) {
+      throw new Error('Ya existe una invitación pendiente para este usuario.');
+    }
+
+    const { data, error } = await supabase
+      .from('group_invitations')
+      .insert({
+        group_id: invitation.groupId,
+        from_user_id: activeUser.id,
+        delivery_channel: deliveryChannel,
+        delivery_target: normalizedContact,
+        to_username: looksLikeUsername ? normalizedContact : null,
+        to_email: targetEmail,
+        to_user_id: targetUser?.user_id ?? null,
+        invited_name: targetUser?.username ?? normalizedContact,
+        inviter_name: currentMember.displayName || activeUser.email?.split('@')[0] || 'Un usuario',
+        inviter_username: currentMember.username || null,
+        inviter_email: activeUser.email || '',
+        status: 'pending',
+      })
+      .select('*')
+      .single();
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo enviar la invitación al grupo.'));
+    }
+
+    const createdInvitation = mapGroupInvitationRow(data as GroupInvitationRow);
+
+    setState((currentState) => ({
+      ...currentState,
+      groupInvitations: [createdInvitation, ...currentState.groupInvitations],
+    }));
+
+    scheduleRealtimeRefresh();
+
+    return createdInvitation;
+  };
+
+  const acceptGroupInvitation = async (invitationId: string) => {
+    const { supabase } = await ensureAuthenticatedUser();
+
+    const { data, error } = await supabase.rpc('accept_group_invitation', {
+      invitation_id: invitationId,
+    });
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo aceptar la invitación al grupo.'));
+    }
+
+    const createdMember = mapGroupMemberRow(Array.isArray(data) ? data[0] as GroupMemberRow : data as GroupMemberRow);
+
+    setState((currentState) => ({
+      ...currentState,
+      groupMembers: [createdMember, ...currentState.groupMembers],
+      groupInvitations: currentState.groupInvitations.map((item) =>
+        item.id === invitationId ? { ...item, status: 'accepted' } : item,
+      ),
+    }));
+
+    scheduleRealtimeRefresh();
+
+    return createdMember;
+  };
+
+  const rejectGroupInvitation = async (invitationId: string) => {
+    const { supabase } = await ensureAuthenticatedUser();
+
+    const { error } = await supabase
+      .from('group_invitations')
+      .update({ status: 'rejected', updated_at: new Date().toISOString() })
+      .eq('id', invitationId);
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo rechazar la invitación al grupo.'));
+    }
+
+    setState((currentState) => ({
+      ...currentState,
+      groupInvitations: currentState.groupInvitations.map((item) =>
+        item.id === invitationId ? { ...item, status: 'rejected' } : item,
+      ),
+    }));
+
+    scheduleRealtimeRefresh();
+  };
+
+  const updateGroupMemberRole = async ({ memberId, role }: UpdateGroupMemberRoleInput) => {
+    const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+
+    const member = state.groupMembers.find((item) => item.id === memberId);
+
+    if (!member) {
+      throw new Error('No se encontró el miembro seleccionado.');
+    }
+
+    const myMembership = state.groupMembers.find((item) => item.groupId === member.groupId && item.userId === activeUser.id);
+
+    if (!myMembership || !['owner', 'admin'].includes(myMembership.role)) {
+      throw new Error('Solo los administradores del grupo pueden cambiar roles.');
+    }
+
+    if (!['owner', 'admin', 'member'].includes(role)) {
+      throw new Error('El rol seleccionado no es válido.');
+    }
+
+    const { error } = await supabase
+      .from('group_members')
+      .update({ role, updated_at: new Date().toISOString() })
+      .eq('id', memberId);
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo actualizar el rol del miembro.'));
+    }
+
+    setState((currentState) => ({
+      ...currentState,
+      groupMembers: currentState.groupMembers.map((item) =>
+        item.id === memberId ? { ...item, role } : item,
+      ),
+    }));
+
+    scheduleRealtimeRefresh();
+  };
+
+  const addGroupExpense = async (expense: CreateGroupExpenseInput) => {
+    const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+    const normalizedDescription = expense.description.trim();
+
+    if (!normalizedDescription) {
+      throw new Error('La descripción del gasto no puede estar vacía.');
+    }
+
+    if (!Number.isFinite(expense.amount) || expense.amount <= 0) {
+      throw new Error('La cantidad del gasto debe ser mayor que cero.');
+    }
+
+    const currentMember = state.groupMembers.find((item) => item.groupId === expense.groupId && item.userId === activeUser.id);
+
+    if (!currentMember) {
+      throw new Error('No formas parte de este grupo.');
+    }
+
+    const payerMember = state.groupMembers.find((item) => item.id === expense.paidByMemberId && item.groupId === expense.groupId);
+
+    if (!payerMember) {
+      throw new Error('Selecciona un pagador válido del grupo.');
+    }
+
+    const participantMemberIds = Array.from(new Set((expense.participantMemberIds ?? []).filter(Boolean)));
+
+    if ((expense.splitMode ?? 'equal') === 'equal' && participantMemberIds.length === 0) {
+      throw new Error('Selecciona al menos un miembro para repartir el gasto.');
+    }
+
+    if ((expense.splitMode ?? 'equal') === 'custom') {
+      const customShares = expense.customShares ?? [];
+      const validCustomShares = customShares.filter(
+        (item) => item.memberId && Number.isFinite(item.amount) && item.amount >= 0,
+      );
+
+      if (validCustomShares.length === 0) {
+        throw new Error('Define al menos una cuota para el reparto personalizado.');
+      }
+
+      const customTotal = validCustomShares.reduce((sum, item) => sum + item.amount, 0);
+      const roundedCustomTotal = Math.round(customTotal * 100) / 100;
+      const roundedExpenseAmount = Math.round(expense.amount * 100) / 100;
+
+      if (Math.abs(roundedCustomTotal - roundedExpenseAmount) > 0.01) {
+        throw new Error('La suma de las cuotas debe coincidir con el importe total del gasto.');
+      }
+    }
+
+    let expenseDateIso: string | null = null;
+
+    if (expense.expenseDate) {
+      const normalizedDate = expense.expenseDate.trim();
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(normalizedDate)) {
+        throw new Error('La fecha del gasto no tiene un formato válido.');
+      }
+
+      const [year, month, day] = normalizedDate.split('-').map((value) => Number.parseInt(value, 10));
+      const localNoonDate = new Date(year, month - 1, day, 12, 0, 0, 0);
+
+      if (Number.isNaN(localNoonDate.getTime())) {
+        throw new Error('La fecha del gasto no es válida.');
+      }
+
+      expenseDateIso = localNoonDate.toISOString();
+    }
+
+    const rpcPayload = {
+      group_id_input: expense.groupId,
+      description_input: normalizedDescription,
+      amount_input: expense.amount,
+      paid_by_member_id_input: expense.paidByMemberId,
+      split_mode_input: expense.splitMode ?? 'equal',
+      selected_member_ids_input: participantMemberIds,
+      custom_shares_input: (expense.customShares ?? []).map((item) => ({
+        member_id: item.memberId,
+        amount: item.amount,
+      })),
+    };
+
+    let rpcResponse = await supabase.rpc('create_group_expense', {
+      ...rpcPayload,
+      expense_date_input: expenseDateIso,
+    });
+
+    // Backward compatibility for environments where the new RPC signature is not deployed yet.
+    if (
+      rpcResponse.error &&
+      (
+        rpcResponse.error.code === '42883' ||
+        (rpcResponse.error.message.toLowerCase().includes('function public.create_group_expense') &&
+          rpcResponse.error.message.toLowerCase().includes('does not exist'))
+      )
+    ) {
+      rpcResponse = await supabase.rpc('create_group_expense', rpcPayload);
+    }
+
+    const { data, error } = rpcResponse;
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo registrar el gasto del grupo.'));
+    }
+
+    const createdExpense = mapGroupExpenseRow(Array.isArray(data) ? data[0] as GroupExpenseRow : data as GroupExpenseRow);
+    const expenseWithSelectedDate = expenseDateIso
+      ? { ...createdExpense, createdAt: expenseDateIso }
+      : createdExpense;
+
+    if (expenseDateIso) {
+      const { error: updateDateError } = await supabase
+        .from('group_expenses')
+        .update({ created_at: expenseDateIso })
+        .eq('id', createdExpense.id);
+
+      if (updateDateError) {
+        console.warn('No se pudo persistir la fecha seleccionada del gasto', updateDateError);
+      }
+    }
+
+    setState((currentState) => ({
+      ...currentState,
+      groupExpenses: [expenseWithSelectedDate, ...currentState.groupExpenses],
+    }));
+
+    scheduleRealtimeRefresh();
+
+    return expenseWithSelectedDate;
+  };
+
+  const updateGroupExpense = async (expense: UpdateGroupExpenseInput) => {
+    const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+    const normalizedDescription = expense.description.trim();
+
+    if (!normalizedDescription) {
+      throw new Error('La descripción del gasto no puede estar vacía.');
+    }
+
+    if (!Number.isFinite(expense.amount) || expense.amount <= 0) {
+      throw new Error('La cantidad del gasto debe ser mayor que cero.');
+    }
+
+    const existingExpense = state.groupExpenses.find((item) => item.id === expense.expenseId);
+
+    if (!existingExpense) {
+      throw new Error('No se encontró el gasto seleccionado.');
+    }
+
+    const myMembership = state.groupMembers.find(
+      (item) => item.groupId === existingExpense.groupId && item.userId === activeUser.id,
+    );
+
+    if (!myMembership) {
+      throw new Error('No formas parte de este grupo.');
+    }
+
+    const canEditExpense =
+      existingExpense.createdById === activeUser.id || ['owner', 'admin'].includes(myMembership.role);
+
+    if (!canEditExpense) {
+      throw new Error('No tienes permisos para editar este gasto.');
+    }
+
+    const payerMember = state.groupMembers.find(
+      (item) => item.id === expense.paidByMemberId && item.groupId === existingExpense.groupId,
+    );
+
+    if (!payerMember) {
+      throw new Error('Selecciona un pagador válido del grupo.');
+    }
+
+    const participantMemberIds = Array.from(new Set((expense.participantMemberIds ?? []).filter(Boolean)));
+
+    if ((expense.splitMode ?? 'equal') === 'equal' && participantMemberIds.length === 0) {
+      throw new Error('Selecciona al menos un miembro para repartir el gasto.');
+    }
+
+    if ((expense.splitMode ?? 'equal') === 'custom') {
+      const customShares = expense.customShares ?? [];
+      const validCustomShares = customShares.filter(
+        (item) => item.memberId && Number.isFinite(item.amount) && item.amount >= 0,
+      );
+
+      if (validCustomShares.length === 0) {
+        throw new Error('Define al menos una cuota para el reparto personalizado.');
+      }
+
+      const customTotal = validCustomShares.reduce((sum, item) => sum + item.amount, 0);
+      const roundedCustomTotal = Math.round(customTotal * 100) / 100;
+      const roundedExpenseAmount = Math.round(expense.amount * 100) / 100;
+
+      if (Math.abs(roundedCustomTotal - roundedExpenseAmount) > 0.01) {
+        throw new Error('La suma de las cuotas debe coincidir con el importe total del gasto.');
+      }
+    }
+
+    const { data, error } = await supabase.rpc('update_group_expense', {
+      expense_id_input: expense.expenseId,
+      description_input: normalizedDescription,
+      amount_input: expense.amount,
+      paid_by_member_id_input: expense.paidByMemberId,
+      split_mode_input: expense.splitMode ?? 'equal',
+      selected_member_ids_input: participantMemberIds,
+      custom_shares_input: (expense.customShares ?? []).map((item) => ({
+        member_id: item.memberId,
+        amount: item.amount,
+      })),
+    });
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo actualizar el gasto del grupo.'));
+    }
+
+    const updatedExpense = mapGroupExpenseRow(Array.isArray(data) ? data[0] as GroupExpenseRow : data as GroupExpenseRow);
+
+    setState((currentState) => ({
+      ...currentState,
+      groupExpenses: currentState.groupExpenses.map((item) =>
+        item.id === updatedExpense.id ? updatedExpense : item,
+      ),
+    }));
+
+    await refreshData({ silent: true });
+
+    return updatedExpense;
+  };
+
+  const deleteGroupExpense = async (expenseId: string) => {
+    const { supabase, user: activeUser } = await ensureAuthenticatedUser();
+
+    const existingExpense = state.groupExpenses.find((item) => item.id === expenseId);
+
+    if (!existingExpense) {
+      throw new Error('No se encontró el gasto seleccionado.');
+    }
+
+    const myMembership = state.groupMembers.find(
+      (item) => item.groupId === existingExpense.groupId && item.userId === activeUser.id,
+    );
+
+    if (!myMembership) {
+      throw new Error('No formas parte de este grupo.');
+    }
+
+    const canDeleteExpense =
+      existingExpense.createdById === activeUser.id || ['owner', 'admin'].includes(myMembership.role);
+
+    if (!canDeleteExpense) {
+      throw new Error('No tienes permisos para eliminar este gasto.');
+    }
+
+    const { error } = await supabase
+      .from('group_expenses')
+      .delete()
+      .eq('id', expenseId);
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo eliminar el gasto del grupo.'));
+    }
+
+    setState((currentState) => ({
+      ...currentState,
+      groupExpenses: currentState.groupExpenses.filter((item) => item.id !== expenseId),
+      groupExpenseSplits: currentState.groupExpenseSplits.filter((item) => item.expenseId !== expenseId),
+    }));
+
+    scheduleRealtimeRefresh();
+  };
+
+  const settleGroupExpenseShare = async ({ splitId }: SettleGroupExpenseShareInput) => {
+    const { supabase } = await ensureAuthenticatedUser();
+
+    const split = state.groupExpenseSplits.find((item) => item.id === splitId);
+
+    if (!split) {
+      throw new Error('No se encontró la cuota seleccionada.');
+    }
+
+    const { data, error } = await supabase.rpc('settle_group_expense_share', {
+      split_id_input: splitId,
+    });
+
+    if (error) {
+      throw new Error(getFriendlyErrorMessage(error, 'No se pudo marcar la cuota como pagada.'));
+    }
+
+    const settledSplit = mapGroupExpenseSplitRow(Array.isArray(data) ? data[0] as GroupExpenseSplitRow : data as GroupExpenseSplitRow);
+
+    setState((currentState) => ({
+      ...currentState,
+      groupExpenseSplits: currentState.groupExpenseSplits.map((item) =>
+        item.id === splitId ? settledSplit : item,
+      ),
+    }));
+
+    scheduleRealtimeRefresh();
+
+    return settledSplit;
+  };
+
   const acceptInvitation = async (invitationId: string) => {
     const { supabase, user: activeUser } = await ensureAuthenticatedUser();
 
@@ -1571,6 +2430,10 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       throw new Error(getFriendlyErrorMessage(error, 'No se pudo aceptar la invitación.'));
     }
 
+    if (!Array.isArray(data) || data.length === 0) {
+      throw new Error('La invitación no existe, no está pendiente o no te pertenece.');
+    }
+
     // Get the invitation to show the correct message
     const { data: invitation } = await supabase
       .from('friend_invitations')
@@ -1580,10 +2443,10 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
 
     // Create a friend object to add to state
     const createdFriend: Friend = {
-      id: data?.[0]?.friend_id || '',
+      id: data[0]?.friend_id || '',
       userId: activeUser.id,
       otherUserId: invitation?.from_user_id,
-      name: data?.[0]?.friend_name || invitation?.inviter_name || 'Amigo',
+      name: data[0]?.friend_name || invitation?.inviter_name || 'Amigo',
       username: invitation?.inviter_username || undefined,
       email: invitation?.inviter_email || '',
       avatar: undefined,
@@ -2150,6 +3013,11 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         friends: state.friends,
         invitations: state.invitations,
         debts: state.debts,
+        groups: state.groups,
+        groupMembers: state.groupMembers,
+        groupInvitations: state.groupInvitations,
+        groupExpenses: state.groupExpenses,
+        groupExpenseSplits: state.groupExpenseSplits,
         notifications: state.notifications,
         isReady,
         isConfigured: configured,
@@ -2174,6 +3042,15 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         refreshData,
         refreshDeviceSessions,
         sendInvitation,
+        createGroup,
+        sendGroupInvitation,
+        acceptGroupInvitation,
+        rejectGroupInvitation,
+        updateGroupMemberRole,
+        addGroupExpense,
+        updateGroupExpense,
+        deleteGroupExpense,
+        settleGroupExpenseShare,
         acceptInvitation,
         rejectInvitation,
         removeFriend,

@@ -261,6 +261,16 @@ export default function Home() {
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
+              {isAuthenticated ? (
+                <Button
+                  asChild
+                  variant="outline"
+                  size="lg"
+                  className="h-12 rounded-full border-primary/40 bg-background/90 px-6 text-base text-primary hover:bg-primary/10 hover:text-primary"
+                >
+                  <Link href="/groups">Ver grupos</Link>
+                </Button>
+              ) : null}
               <Button
                 asChild
                 variant="outline"

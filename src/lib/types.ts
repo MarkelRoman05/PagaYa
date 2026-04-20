@@ -9,7 +9,17 @@ export type NotificationType =
   | 'debt_created'
   | 'debt_payment_requested'
   | 'debt_paid'
-  | 'debt_payment_rejected';
+  | 'debt_payment_rejected'
+  | 'group_invitation_received'
+  | 'group_invitation_accepted'
+  | 'group_invitation_rejected'
+  | 'group_expense_created'
+  | 'group_share_settled';
+
+export type GroupRole = 'owner' | 'admin' | 'member';
+export type GroupInvitationStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled';
+export type GroupSplitMode = 'equal' | 'custom';
+export type GroupInvitationChannel = 'email' | 'whatsapp';
 
 export type NotificationChannel = 'web' | 'app';
 
@@ -64,10 +74,79 @@ export interface Debt {
   paymentRequestRejectionCount: number;
 }
 
+export interface Group {
+  id: string;
+  createdById: string;
+  name: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GroupMember {
+  id: string;
+  groupId: string;
+  userId: string;
+  role: GroupRole;
+  displayName: string;
+  username?: string;
+  email: string;
+  avatar?: string;
+  joinedAt: string;
+  updatedAt: string;
+}
+
+export interface GroupInvitation {
+  id: string;
+  groupId: string;
+  fromUserId?: string;
+  deliveryChannel: GroupInvitationChannel;
+  deliveryTarget?: string;
+  toUserName?: string;
+  toEmail: string;
+  toUserId?: string;
+  invitedName: string;
+  inviterName: string;
+  inviterUserName?: string;
+  inviterEmail: string;
+  status: GroupInvitationStatus;
+  createdAt: string;
+}
+
+export interface GroupExpense {
+  id: string;
+  groupId: string;
+  createdById: string;
+  description: string;
+  amount: number;
+  paidByMemberId: string;
+  splitMode: GroupSplitMode;
+  icon?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GroupExpenseSplit {
+  id: string;
+  expenseId: string;
+  groupId: string;
+  memberId: string;
+  shareAmount: number;
+  isSettled: boolean;
+  settledAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppState {
   friends: Friend[];
   invitations: FriendInvitation[];
   debts: Debt[];
+  groups: Group[];
+  groupMembers: GroupMember[];
+  groupInvitations: GroupInvitation[];
+  groupExpenses: GroupExpense[];
+  groupExpenseSplits: GroupExpenseSplit[];
   notifications: AppNotification[];
 }
 

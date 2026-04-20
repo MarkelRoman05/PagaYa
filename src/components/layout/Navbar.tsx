@@ -7,12 +7,14 @@ import { usePathname } from "next/navigation";
 import {
   Wallet,
   Users,
+  UsersRound,
   History,
   CircleUser,
   Bell,
   CheckCheck,
   Check,
   Trash2,
+  Contact,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { usePagaYa } from "@/hooks/use-pagaya";
@@ -123,7 +125,8 @@ export function Navbar() {
 
   const navItems = [
     { name: "Deudas", href: "/debts", icon: Wallet },
-    { name: "Amigos", href: "/friends", icon: Users },
+    { name: "Grupos", href: "/groups", icon: UsersRound },
+    { name: "Amigos", href: "/friends", icon: Contact },
     { name: "Historial", href: "/history", icon: History },
     { name: "Perfil", href: "/profile", icon: CircleUser },
   ];
