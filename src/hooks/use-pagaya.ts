@@ -1797,10 +1797,12 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
 
     await deactivateAndroidPushToken(session);
 
-    try {
-      await PushNotifications.unregister();
-    } catch (error) {
-      console.error('No se pudo desregistrar Android Push Notifications al cerrar sesion', error);
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await PushNotifications.unregister();
+      } catch (error) {
+        console.error('No se pudo desregistrar Android Push Notifications al cerrar sesion', error);
+      }
     }
 
     await markCurrentSessionAsRevoked(session);
@@ -2046,7 +2048,13 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       throw new Error(getFriendlyErrorMessage(error, 'No se pudo aceptar la invitación al grupo.'));
     }
 
-    const createdMember = mapGroupMemberRow(Array.isArray(data) ? data[0] as GroupMemberRow : data as GroupMemberRow);
+    const rawMember = Array.isArray(data) ? data[0] : data;
+
+    if (!rawMember) {
+      throw new Error('No se pudo aceptar la invitación. Es posible que el enlace ya no esté pendiente o no sea válido.');
+    }
+
+    const createdMember = mapGroupMemberRow(rawMember as GroupMemberRow);
 
     setState((currentState) => ({
       ...currentState,

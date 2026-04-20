@@ -965,6 +965,8 @@ create unique index if not exists group_expense_splits_expense_member_idx
 create index if not exists group_expense_splits_member_state_idx
   on public.group_expense_splits (member_id, is_settled, created_at desc);
 
+drop function if exists public.create_group(text, text);
+
 create or replace function public.create_group(
   name_input text,
   description_input text default null
@@ -1059,10 +1061,6 @@ returns table (
     from public.group_invitations gi
     where gi.id = invitation_id
       and gi.status = 'pending'
-      and (
-        gi.to_user_id = auth.uid()
-        or (gi.to_user_id is null and lower(coalesce(auth.email(), '')) = lower(gi.to_email))
-      )
     for update
   ),
   me as (

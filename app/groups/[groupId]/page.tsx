@@ -26,6 +26,12 @@ import { CalendarDays, ChevronLeft, CircleDollarSign, Copy, ImagePlus, LoaderCir
 
 type FinancialStatus = "al día" | "moroso" | "moroso premium" | "pendiente";
 
+const ROLE_LABELS: Record<"owner" | "admin" | "member", string> = {
+  owner: "propietario",
+  admin: "admin",
+  member: "miembro",
+};
+
 const EMOJI_OPTIONS = ["💰", "🍽️", "🍕", "🏨", "🚗", "⛽", "🎬", "🎮", "🎸", "✈️", "🎁", "🛍️", "💇", "🏥", "📚", "🎓", "⚽", "🏃", "🎂", "🍰", "☕", "🍺", "🍷", "🎉", "🎊", "🏪", "🚕", "🚌", "🚇", "🎭", "🎪", "🎨", "📸", "🎤", "🎧", "🎼", "🎹", "🥘", "🍜", "🍲", "🥗", "🍔", "🌮", "🍱", "🍛", "🍝"];
 
 function getMemberLabel(member: { displayName: string; username?: string }) {
@@ -54,6 +60,21 @@ function getFinancialStatus(days: number, hasDebt: boolean): FinancialStatus {
   }
 
   return "pendiente";
+}
+
+function getMemberStatusBadgeClass(status: FinancialStatus) {
+  switch (status) {
+    case "al día":
+      return "rounded-full border border-emerald-500/30 bg-emerald-500/12 text-emerald-700 dark:text-emerald-300";
+    case "pendiente":
+      return "rounded-full border border-amber-500/30 bg-amber-500/12 text-amber-700 dark:text-amber-300";
+    case "moroso":
+      return "rounded-full border border-orange-500/30 bg-orange-500/12 text-orange-700 dark:text-orange-300";
+    case "moroso premium":
+      return "rounded-full border border-rose-500/30 bg-rose-500/12 text-rose-700 dark:text-rose-300";
+    default:
+      return "rounded-full border border-border/60 bg-background/70 text-foreground";
+  }
 }
 
 function getTodayDateInputValue() {
@@ -331,6 +352,21 @@ export default function GroupDetailPage() {
 
     return selectedExpense.createdById === user.id || currentMember.role === "owner" || currentMember.role === "admin";
   }, [currentMember, selectedExpense, user]);
+
+  const orderedPayerMembers = useMemo(() => {
+    if (!user) {
+      return members;
+    }
+
+    const myMembers = members.filter((member) => member.userId === user.id);
+    const otherMembers = members.filter((member) => member.userId !== user.id);
+
+    return [...myMembers, ...otherMembers];
+  }, [members, user]);
+
+  const getPayerOptionLabel = (member: { displayName: string; username?: string; userId: string }) => {
+    return member.userId === user?.id ? `${getMemberLabel(member)} (yo)` : getMemberLabel(member);
+  };
 
   const formatAmountInputValue = (value: number) => {
     const rounded = Math.max(0, Math.round(value * 100) / 100);
@@ -1230,7 +1266,7 @@ export default function GroupDetailPage() {
                         <CardTitle className="break-words text-2xl font-bold tracking-tight sm:text-3xl">{group.name}</CardTitle>
                         {currentMember ? (
                           <Badge variant="outline" className="rounded-full border-primary/30 bg-primary/15 text-primary">
-                            {currentMember.role}
+                            {ROLE_LABELS[currentMember.role] ?? currentMember.role}
                           </Badge>
                         ) : null}
                       </div>
@@ -1713,10 +1749,14 @@ export default function GroupDetailPage() {
                             <SelectTrigger id="edit-payer" className="h-11 rounded-xl">
                               <SelectValue placeholder="Selecciona un miembro" />
                             </SelectTrigger>
-                            <SelectContent>
-                              {members.map((member) => (
-                                <SelectItem key={member.id} value={member.id}>
-                                  {getMemberLabel(member)}
+                            <SelectContent className="rounded-xl border-primary/25 bg-background/95 text-foreground shadow-lg shadow-primary/10 backdrop-blur">
+                              {orderedPayerMembers.map((member) => (
+                                <SelectItem
+                                  key={member.id}
+                                  value={member.id}
+                                  className="rounded-lg py-2 text-sm font-medium focus:bg-primary/15 focus:text-foreground data-[state=checked]:bg-primary/20 data-[state=checked]:text-primary"
+                                >
+                                  {getPayerOptionLabel(member)}
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -1835,7 +1875,10 @@ export default function GroupDetailPage() {
           </Dialog>
 
           <Dialog open={isAddExpenseModalOpen} onOpenChange={setIsAddExpenseModalOpen}>
-            <DialogContent className="max-h-[88vh] w-[96vw] max-w-3xl overflow-y-auto rounded-2xl border border-primary/20 bg-gradient-to-b from-background to-background p-0">
+            <DialogContent
+              className="max-h-[88vh] w-[96vw] max-w-3xl overflow-y-auto rounded-2xl border border-primary/20 bg-gradient-to-b from-background to-background p-0"
+              onOpenAutoFocus={(event) => event.preventDefault()}
+            >
               <DialogHeader className="sticky top-0 z-10 border-b border-border/60 bg-background/95 px-4 pb-4 pt-5 backdrop-blur sm:px-6">
                 <DialogTitle className="px-8 text-center text-xl sm:px-0 sm:text-left sm:text-2xl">Añadir gasto al grupo</DialogTitle>
                 <DialogDescription className="px-8 text-center text-sm sm:px-0 sm:text-left sm:text-base">
@@ -1887,10 +1930,14 @@ export default function GroupDetailPage() {
                       <SelectTrigger id="payer" className="h-12 rounded-xl border-border/70 bg-background/80">
                         <SelectValue placeholder="Selecciona un miembro" />
                       </SelectTrigger>
-                      <SelectContent>
-                        {members.map((member) => (
-                          <SelectItem key={member.id} value={member.id}>
-                            {getMemberLabel(member)}
+                      <SelectContent className="rounded-xl border-primary/25 bg-background/95 text-foreground shadow-lg shadow-primary/10 backdrop-blur">
+                        {orderedPayerMembers.map((member) => (
+                          <SelectItem
+                            key={member.id}
+                            value={member.id}
+                            className="rounded-lg py-2 text-sm font-medium focus:bg-primary/15 focus:text-foreground data-[state=checked]:bg-primary/20 data-[state=checked]:text-primary"
+                          >
+                            {getPayerOptionLabel(member)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -2118,10 +2165,10 @@ export default function GroupDetailPage() {
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="font-semibold">{getMemberLabel(member)}</p>
-                                <Badge variant="outline" className="rounded-full border-primary/20 bg-primary/10 text-primary">
-                                  {member.role}
+                                <Badge variant="outline" className="rounded-full border-sky-500/30 bg-sky-500/12 text-sky-700 dark:text-sky-300">
+                                  {ROLE_LABELS[member.role] ?? member.role}
                                 </Badge>
-                                <Badge variant="secondary" className="rounded-full">{status}</Badge>
+                                <Badge variant="outline" className={getMemberStatusBadgeClass(status)}>{status}</Badge>
                               </div>
                               <p className="mt-1 text-sm text-muted-foreground">{member.email}</p>
                               <p className="mt-2 text-sm font-medium">Balance: {formatCurrency(balance)}</p>
