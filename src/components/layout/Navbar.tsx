@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -104,6 +104,21 @@ export function Navbar() {
     setNotificationRead,
     removeNotification,
   } = usePagaYa();
+
+  // Route-change loading bar
+  const [navLoading, setNavLoading] = useState(false);
+  const [prevPathname, setPrevPathname] = useState(pathname);
+
+  useEffect(() => {
+    if (pathname !== prevPathname) {
+      setNavLoading(false);
+      setPrevPathname(pathname);
+    }
+  }, [pathname, prevPathname]);
+
+  const handleNavClick = () => {
+    setNavLoading(true);
+  };
   const normalizePath = (value: string) => {
     if (!value) return '/';
     if (value === '/') return value;
@@ -195,10 +210,17 @@ export function Navbar() {
 
   return (
     <>
+      {/* Route-change loading bar */}
+      {navLoading && (
+        <div className="fixed top-0 left-0 right-0 z-[60] h-0.5" style={{ top: "var(--safe-area-top)" }}>
+          <div className="h-full bg-primary animate-[loading-bar_1.5s_ease-in-out_infinite]" />
+        </div>
+      )}
+
       <div className="h-16 md:hidden" />
 
       <header
-        className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85"
+        className="fixed top-0 left-0 right-0 z-50 h-16 border-b border-border/60 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60"
         style={{ top: "var(--safe-area-top)" }}
       >
         <div className="container mx-auto flex h-16 max-w-6xl items-center justify-between px-3 sm:px-4">
@@ -229,11 +251,12 @@ export function Navbar() {
                 <Link
                   key={item.href}
                   href={item.href}
+                  onClick={() => { if (!isActive) handleNavClick(); }}
                   className={cn(
-                    "inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition-colors",
+                    "inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
                     isActive
-                      ? "bg-primary/15 text-primary"
-                      : "text-muted-foreground hover:bg-primary/10 hover:text-primary",
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground",
                   )}
                 >
                   <Icon className="h-4 w-4" />
@@ -326,7 +349,7 @@ export function Navbar() {
       </header>
 
       <nav
-        className="fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85 md:hidden"
+        className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/60 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60 md:hidden"
         style={{ paddingBottom: "var(--safe-area-bottom)" }}
       >
         <div className="container mx-auto flex h-16 max-w-6xl items-stretch justify-between gap-1 px-2 sm:px-4">
@@ -338,15 +361,17 @@ export function Navbar() {
               <Link
                 key={item.href}
                 href={item.href}
+                onClick={() => { if (!isActive) handleNavClick(); }}
                 className={cn(
-                  "flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] font-medium transition-colors h-full border-t-2",
+                  "relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] font-medium transition-colors h-full",
                   isActive
-                    ? "text-primary border-primary"
-                    : "text-muted-foreground border-transparent hover:text-primary",
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
               >
                 <Icon className="h-5 w-5 shrink-0" />
                 <span className="truncate leading-none">{item.name}</span>
+                {isActive && <span className="absolute -bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-primary" />}
               </Link>
             );
           })}
@@ -367,8 +392,8 @@ function NotificationPanel({ notifications, onToggleRead, onRemove, onMarkAllRea
   const unreadCount = notifications.filter((notification) => !notification.isRead).length;
 
   return (
-    <div className="overflow-hidden rounded-md">
-      <div className="border-b px-4 py-3">
+    <div className="overflow-hidden rounded-xl">
+      <div className="border-b border-border/50 px-4 py-3">
         <div className="flex items-center justify-between gap-2">
           <p className="text-sm font-semibold leading-none">Notificaciones</p>
           <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
@@ -377,7 +402,7 @@ function NotificationPanel({ notifications, onToggleRead, onRemove, onMarkAllRea
         </div>
         <div className="mt-2 flex items-center justify-between gap-2">
           <p className="min-w-0 text-xs leading-snug text-muted-foreground">
-            Actividad reciente de tu cuenta
+            Actividad reciente
           </p>
           <Button
             type="button"
@@ -407,7 +432,7 @@ function NotificationPanel({ notifications, onToggleRead, onRemove, onMarkAllRea
 function NotificationList({ notifications, onToggleRead, onRemove }: NotificationActionProps) {
   if (notifications.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed bg-muted/40 p-4 text-center">
+      <div className="rounded-xl border border-border/50 bg-muted/20 p-4 text-center">
         <p className="text-sm font-medium text-foreground">No tienes notificaciones</p>
         <p className="mt-1 text-xs text-muted-foreground">
           Cuando haya actividad nueva, aparecerá aquí.
@@ -426,8 +451,8 @@ function NotificationList({ notifications, onToggleRead, onRemove }: Notificatio
         <li
           key={item.id}
           className={cn(
-            "rounded-xl border bg-card p-3 transition-opacity",
-            item.isRead ? "opacity-75" : "opacity-100",
+            "rounded-xl border border-border/50 bg-card p-3 transition-opacity",
+            item.isRead ? "opacity-60" : "opacity-100",
           )}
         >
           <div className="mb-1 flex items-start justify-between gap-2">

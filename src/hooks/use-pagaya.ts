@@ -934,12 +934,10 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         .eq('user_id', activeUser.id)
         .order('joined_at', { ascending: false });
 
-      const groupsSchemaUnavailable = Boolean(myGroupMembershipsError && isMissingRelationError(myGroupMembershipsError));
+      const groupsSchemaUnavailable = Boolean(myGroupMembershipsError);
 
       if (groupsSchemaUnavailable) {
         logOptionalSchemaWarning('grupos (group_members)', myGroupMembershipsError);
-      } else if (myGroupMembershipsError) {
-        throw myGroupMembershipsError;
       }
 
       const groupIds = Array.from(new Set((groupsSchemaUnavailable ? [] : (myGroupMemberships ?? [])).map((row) => row.group_id)));
@@ -953,10 +951,8 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
           .or(`from_user_id.eq.${activeUser.id},to_user_id.eq.${activeUser.id},to_email.eq.${activeUser.email}`)
           .order('created_at', { ascending: false });
 
-        if (groupInvitationsError && isMissingRelationError(groupInvitationsError)) {
+        if (groupInvitationsError) {
           logOptionalSchemaWarning('grupos (group_invitations)', groupInvitationsError);
-        } else if (groupInvitationsError) {
-          throw groupInvitationsError;
         } else {
           groupInvitationsQueryData = (data ?? []) as GroupInvitationRow[];
         }
@@ -1001,32 +997,24 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
           supabase.from('group_expense_splits').select('*').in('group_id', groupIds).order('created_at', { ascending: false }),
         ]);
 
-        if (groupsError && isMissingRelationError(groupsError)) {
+        if (groupsError) {
           logOptionalSchemaWarning('grupos (groups)', groupsError);
           groupInvitationsData = [];
-        } else if (groupsError) {
-          throw groupsError;
         }
 
-        if (groupMembersError && isMissingRelationError(groupMembersError)) {
+        if (groupMembersError) {
           logOptionalSchemaWarning('grupos (group_members)', groupMembersError);
           groupInvitationsData = [];
-        } else if (groupMembersError) {
-          throw groupMembersError;
         }
 
-        if (groupExpensesError && isMissingRelationError(groupExpensesError)) {
+        if (groupExpensesError) {
           logOptionalSchemaWarning('grupos (group_expenses)', groupExpensesError);
           groupInvitationsData = [];
-        } else if (groupExpensesError) {
-          throw groupExpensesError;
         }
 
-        if (groupExpenseSplitsError && isMissingRelationError(groupExpenseSplitsError)) {
+        if (groupExpenseSplitsError) {
           logOptionalSchemaWarning('grupos (group_expense_splits)', groupExpenseSplitsError);
           groupInvitationsData = [];
-        } else if (groupExpenseSplitsError) {
-          throw groupExpenseSplitsError;
         }
 
         if (!groupsError && !groupMembersError && !groupExpensesError && !groupExpenseSplitsError) {
@@ -1049,25 +1037,19 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
         throw debtsError;
       }
 
-      const notificationsUnavailable = Boolean(notificationsError && isMissingRelationError(notificationsError));
+      const notificationsUnavailable = Boolean(notificationsError);
       if (notificationsUnavailable) {
         logOptionalSchemaWarning('notificaciones (user_notifications)', notificationsError);
-      } else if (notificationsError) {
-        throw notificationsError;
       }
 
-      const settingsUnavailable = Boolean(settingsError && isMissingRelationError(settingsError));
+      const settingsUnavailable = Boolean(settingsError);
       if (settingsUnavailable) {
         logOptionalSchemaWarning('ajustes (user_settings)', settingsError);
-      } else if (settingsError) {
-        throw settingsError;
       }
 
-      const devicesUnavailable = Boolean(devicesError && isMissingRelationError(devicesError));
+      const devicesUnavailable = Boolean(devicesError);
       if (devicesUnavailable) {
         logOptionalSchemaWarning('dispositivos (user_device_sessions)', devicesError);
-      } else if (devicesError) {
-        throw devicesError;
       }
 
       // Map invitations and filter only relevant ones
@@ -1179,7 +1161,15 @@ export function PagaYaProvider({ children }: { children: ReactNode }) {
       if (currentSession?.user) {
         try {
           await syncCurrentDeviceSession(currentSession);
-          await refreshData();
+          // ponytail: race refreshData against a timeout so isReady always gets set.
+          // If Supabase queries hang (network, RLS policy, slow cold start),
+          // the dashboard still unblocks after 10s with whatever data loaded.
+          await Promise.race([
+            refreshData(),
+            new Promise<void>((_, reject) =>
+              setTimeout(() => reject(new Error('initial-load-timeout')), 10_000),
+            ),
+          ]);
         } catch (error) {
           console.warn('No se pudieron cargar los datos iniciales', error);
         }

@@ -7,7 +7,6 @@ import { Navbar } from '@/components/layout/Navbar';
 import { DebtCard } from '@/components/debts/DebtCard';
 import { NewDebtDialog } from '@/components/debts/NewDebtSheet';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { ArrowUpRight, ArrowDownLeft, Plus, RefreshCw, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/utils';
@@ -31,152 +30,104 @@ export default function Dashboard() {
   const totalOwedByMe = owedByMe.reduce((acc, d) => acc + d.amount, 0);
 
   const handleRefresh = async () => {
-    try {
-      await refreshData();
-    } catch (error) {
-      toast({
-        title: 'No se pudo recargar la actividad',
-        description: error instanceof Error ? error.message : 'Inténtalo de nuevo.',
-        variant: 'destructive',
-      });
-    }
+    try { await refreshData(); }
+    catch (error) { toast({ title: 'No se pudo recargar la actividad', description: error instanceof Error ? error.message : 'Inténtalo de nuevo.', variant: 'destructive' }); }
   };
 
-  if (!isReady) {
-    return <AppLoadingScreen title="Cargando panel" subtitle="Estamos preparando tus deudas y movimientos..." />;
-  }
+  if (!isReady) return <AppLoadingScreen title="Cargando panel" subtitle="Estamos preparando tus deudas y movimientos..." />;
 
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-background pb-24 md:pb-20 md:pt-20">
         <Navbar />
-        
+
         <main className="container mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-        <header className="mb-8 flex flex-col gap-4 sm:gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground sm:text-3xl">¡Hola, @{firstName}!</h1>
-            <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">Esto es lo que debes y lo que te deben. Págalo cuanto antes, que si no tu amigo se enfadará.</p>
-          </div>
-          <div className="flex w-full items-center gap-2 sm:w-auto">
-            <Button onClick={() => setIsNewDebtOpen(true)} className="h-11 w-full rounded-full shadow-lg sm:w-auto">
-              <Plus className="w-5 h-5 mr-2" />
+          <header className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-extrabold tracking-tight text-foreground sm:text-3xl">¡Hola, @{firstName}!</h1>
+              <p className="mt-1 text-sm text-muted-foreground sm:text-base">Esto es lo que debes y lo que te deben.</p>
+            </div>
+            <Button onClick={() => setIsNewDebtOpen(true)} className="h-11 w-full rounded-xl font-semibold shadow-md shadow-primary/20 sm:w-auto">
+              <Plus className="mr-2 h-5 w-5" />
               Nueva deuda
             </Button>
-          </div>
-        </header>
+          </header>
 
-        {isLoadingData && <InlineLoadingNotice message="Cargando tus deudas..." />}
+          {isLoadingData && <InlineLoadingNotice message="Cargando tus deudas..." />}
 
-        <section className="mb-8 grid gap-4 md:grid-cols-2">
-          <Card className="bg-primary text-white overflow-hidden relative">
-            <div className="absolute right-[-10%] top-[-10%] opacity-10">
-              <ArrowDownLeft className="h-24 w-24 sm:h-32 sm:w-32" />
-            </div>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-primary-foreground/80 text-sm font-medium uppercase tracking-wider flex items-center gap-2">
-                <ArrowDownLeft className="w-4 h-4" />
-                Me deben
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="break-words text-3xl font-bold sm:text-4xl">{formatCurrency(totalOwedToMe)}</div>
-              <p className="text-primary-foreground/70 text-sm mt-1">{owedToMe.length} deuda(s) pendiente(s)</p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-card border-border overflow-hidden relative">
-             <div className="absolute right-[-10%] top-[-10%] opacity-5">
-              <ArrowUpRight className="h-24 w-24 text-orange-600 sm:h-32 sm:w-32" />
-            </div>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-muted-foreground text-sm font-medium uppercase tracking-wider flex items-center gap-2">
-                <ArrowUpRight className="w-4 h-4 text-orange-600" />
-                Debo
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="break-words text-3xl font-bold text-foreground sm:text-4xl">{formatCurrency(totalOwedByMe)}</div>
-              <p className="text-muted-foreground text-sm mt-1">{owedByMe.length} deuda(s) pendiente(s)</p>
-            </CardContent>
-          </Card>
-        </section>
-
-        <section>
-          <Tabs defaultValue="all" className="w-full">
-            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <h2 className="text-xl font-bold">Actividad</h2>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
-                <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoadingData} className="w-full sm:w-auto">
-                  <RefreshCw className={isLoadingData ? 'animate-spin' : ''} />
-                  Recargar
-                </Button>
-                <div className="overflow-x-auto pb-1">
-                  <TabsList className="inline-flex h-auto min-w-full justify-start gap-1 border bg-background/50 p-1 sm:min-w-0">
-                    <TabsTrigger value="all" className="shrink-0">Todas</TabsTrigger>
-                    <TabsTrigger value="to-me" className="shrink-0">Me deben</TabsTrigger>
-                    <TabsTrigger value="by-me" className="shrink-0">Debo</TabsTrigger>
-                  </TabsList>
-                </div>
+          {/* Summary cards */}
+          <section className="mb-8 grid gap-4 sm:grid-cols-2">
+            <div className="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#0a1628] via-[#0f1d32] to-[#0a1628] p-6 text-white shadow-xl transition-all hover:shadow-2xl">
+              <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(77,201,246,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(77,201,246,0.04)_1px,transparent_1px)] bg-[size:24px_24px] opacity-50" />
+              <div className="absolute -right-4 -top-4 opacity-[0.07] transition-transform duration-500 group-hover:scale-110">
+                <ArrowDownLeft className="h-32 w-32" />
+              </div>
+              <div className="relative z-10">
+                <p className="mb-1 flex items-center gap-2 text-sm font-medium text-white/50">
+                  <ArrowDownLeft className="h-4 w-4" />
+                  Me deben
+                </p>
+                <p className="text-3xl font-extrabold tracking-tight sm:text-4xl">{formatCurrency(totalOwedToMe)}</p>
+                <p className="mt-2 text-sm text-white/40">{owedToMe.length} deuda(s) pendiente(s)</p>
               </div>
             </div>
 
-            <TabsContent value="all" className="grid gap-4">
-              {pendingDebts.length > 0 ? (
-                pendingDebts.map(debt => (
-                  <DebtCard 
-                    key={debt.id} 
-                    debt={debt} 
-                    friend={friends.find(f => f.id === debt.friendId)} 
-                    onUpdate={updateDebt}
-                    onPaid={markAsPaid}
-                    onRejectPaymentRequest={rejectDebtPaymentRequest}
-                    onDelete={removeDebt}
-                  />
-                ))
-              ) : (
-                <EmptyState onOpenDebt={() => setIsNewDebtOpen(true)} />
-              )}
-            </TabsContent>
+            <div className="group relative overflow-hidden rounded-2xl border border-border/50 bg-card p-6 shadow-sm transition-all hover:shadow-md">
+              <div className="absolute -right-4 -top-4 opacity-[0.03] transition-transform duration-500 group-hover:scale-110">
+                <ArrowUpRight className="h-32 w-32 text-foreground" />
+              </div>
+              <div className="relative z-10">
+                <p className="mb-1 flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                  <ArrowUpRight className="h-4 w-4" />
+                  Debo
+                </p>
+                <p className="text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">{formatCurrency(totalOwedByMe)}</p>
+                <p className="mt-2 text-sm text-muted-foreground">{owedByMe.length} deuda(s) pendiente(s)</p>
+              </div>
+            </div>
+          </section>
 
-            <TabsContent value="to-me" className="grid gap-4">
-               {owedToMe.length > 0 ? (
-                owedToMe.map(debt => (
-                  <DebtCard 
-                    key={debt.id} 
-                    debt={debt} 
-                    friend={friends.find(f => f.id === debt.friendId)} 
-                    onUpdate={updateDebt}
-                    onPaid={markAsPaid}
-                    onRejectPaymentRequest={rejectDebtPaymentRequest}
-                    onDelete={removeDebt}
-                  />
-                ))
-              ) : (
-                <EmptyState onOpenDebt={() => setIsNewDebtOpen(true)} />
-              )}
-            </TabsContent>
+          {/* Activity */}
+          <section>
+            <Tabs defaultValue="all" className="w-full">
+              <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-xl font-extrabold">Actividad</h2>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoadingData} className="w-full rounded-xl sm:w-auto">
+                    <RefreshCw className={isLoadingData ? 'animate-spin' : ''} />
+                    Recargar
+                  </Button>
+                  <div className="overflow-x-auto pb-1">
+                    <TabsList className="inline-flex h-9 min-w-full justify-start gap-1 rounded-lg border bg-muted/40 p-1 sm:min-w-0">
+                      <TabsTrigger value="all" className="shrink-0 rounded-md px-3 text-xs font-medium">Todas</TabsTrigger>
+                      <TabsTrigger value="to-me" className="shrink-0 rounded-md px-3 text-xs font-medium">Me deben</TabsTrigger>
+                      <TabsTrigger value="by-me" className="shrink-0 rounded-md px-3 text-xs font-medium">Debo</TabsTrigger>
+                    </TabsList>
+                  </div>
+                </div>
+              </div>
 
-            <TabsContent value="by-me" className="grid gap-4">
-               {owedByMe.length > 0 ? (
-                owedByMe.map(debt => (
-                  <DebtCard 
-                    key={debt.id} 
-                    debt={debt} 
-                    friend={friends.find(f => f.id === debt.friendId)} 
-                    onUpdate={updateDebt}
-                    onPaid={markAsPaid}
-                    onRejectPaymentRequest={rejectDebtPaymentRequest}
-                    onDelete={removeDebt}
-                  />
-                ))
-              ) : (
-                <EmptyState onOpenDebt={() => setIsNewDebtOpen(true)} />
-              )}
-            </TabsContent>
-          </Tabs>
-        </section>
+              <TabsContent value="all" className="grid gap-3">
+                {pendingDebts.length > 0 ? pendingDebts.map(debt => (
+                  <DebtCard key={debt.id} debt={debt} friend={friends.find(f => f.id === debt.friendId)} onUpdate={updateDebt} onPaid={markAsPaid} onRejectPaymentRequest={rejectDebtPaymentRequest} onDelete={removeDebt} />
+                )) : <EmptyState onOpenDebt={() => setIsNewDebtOpen(true)} />}
+              </TabsContent>
 
-        <NewDebtDialog open={isNewDebtOpen} onOpenChange={setIsNewDebtOpen} />
+              <TabsContent value="to-me" className="grid gap-3">
+                {owedToMe.length > 0 ? owedToMe.map(debt => (
+                  <DebtCard key={debt.id} debt={debt} friend={friends.find(f => f.id === debt.friendId)} onUpdate={updateDebt} onPaid={markAsPaid} onRejectPaymentRequest={rejectDebtPaymentRequest} onDelete={removeDebt} />
+                )) : <EmptyState onOpenDebt={() => setIsNewDebtOpen(true)} />}
+              </TabsContent>
+
+              <TabsContent value="by-me" className="grid gap-3">
+                {owedByMe.length > 0 ? owedByMe.map(debt => (
+                  <DebtCard key={debt.id} debt={debt} friend={friends.find(f => f.id === debt.friendId)} onUpdate={updateDebt} onPaid={markAsPaid} onRejectPaymentRequest={rejectDebtPaymentRequest} onDelete={removeDebt} />
+                )) : <EmptyState onOpenDebt={() => setIsNewDebtOpen(true)} />}
+              </TabsContent>
+            </Tabs>
+          </section>
+
+          <NewDebtDialog open={isNewDebtOpen} onOpenChange={setIsNewDebtOpen} />
         </main>
       </div>
     </ProtectedRoute>
@@ -185,15 +136,15 @@ export default function Dashboard() {
 
 function EmptyState({ onOpenDebt }: { onOpenDebt: () => void }) {
   return (
-    <>
-      <div className="flex flex-col items-center rounded-2xl border border-dashed bg-card/50 px-4 py-16 text-center sm:py-20">
-        <Wallet className="w-12 h-12 text-muted-foreground/30 mb-4" />
-        <h3 className="text-lg font-medium text-muted-foreground">No hay deudas pendientes</h3>
-        <p className="text-sm text-muted-foreground/70">Todo está al día. Relájate y disfuta.</p>
-        <Button variant="link" onClick={onOpenDebt} className="mt-2">
-          Crear una nueva
-        </Button>
+    <div className="flex flex-col items-center rounded-2xl border border-dashed border-border/60 bg-muted/20 px-4 py-16 text-center sm:py-20">
+      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
+        <Wallet className="h-8 w-8 text-primary/40" />
       </div>
-    </>
+      <h3 className="text-lg font-bold text-foreground">No hay deudas pendientes</h3>
+      <p className="mt-1 text-sm text-muted-foreground">Todo está al día. Relájate y disfruta.</p>
+      <Button variant="ghost" onClick={onOpenDebt} className="mt-4 rounded-xl font-semibold text-primary hover:bg-primary/10 hover:text-primary">
+        Crear una nueva
+      </Button>
+    </div>
   );
 }
